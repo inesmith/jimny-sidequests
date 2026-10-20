@@ -6,9 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+
     "ios": {
       "supportsTablet": true
     },
+
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -18,12 +20,20 @@
       },
       "predictiveBackGestureEnabled": false
     },
+
     "web": {
       "favicon": "./assets/favicon.png"
     },
+
     "plugins": [
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Jimny Side Quests to use your location to find trails and Jimny adventures near you."
+        }
+      ]
     ]
   }
 }
