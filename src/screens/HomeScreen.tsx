@@ -10,6 +10,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { colors, fonts, spacing } from "../theme/theme";
+import {
+  featuredQuest,
+  quests,
+} from "../data/quests";
 
 export type Quest = {
   id: string;
@@ -31,6 +35,10 @@ type HomeScreenProps = {
   onAdventures?: () => void;
   onProfile?: () => void;
   onQuestPress?: (quest: Quest) => void;
+  onUpcomingExperiences?: () => void;
+
+  onNotifications?: () => void;
+  notificationCount?: number;
 };
 
 const categories = [
@@ -40,104 +48,6 @@ const categories = [
   "Community",
   "Road Trip",
   "Quick Quest",
-];
-
-const featuredQuest: Quest = {
-  id: "get-it-dirty",
-  title: "Get It Dirty",
-  category: "Off-Road",
-  duration: "Half Day",
-  difficulty: 3,
-  difficultyLabel: "Moderate",
-  description:
-    "Complete an off-road trail and earn your dirt badge. Show that your Jimny belongs in the wild!",
-  requirements:
-    "Your Jimny, sense of adventure, camera",
-  steps: [
-    "Find an off-road trail in South Africa",
-    "Drive the trail in your Jimny",
-    "Take a photo of your vehicle on the trail as proof",
-  ],
-  stampTitle: "The Dirt Badge",
-};
-
-const quests: Quest[] = [
-  {
-    id: "convoy-and-coffee",
-    title: "Convoy & Coffee",
-    category: "Community",
-    duration: "2 Hours",
-    difficulty: 1,
-    difficultyLabel: "Easy",
-    description:
-      "Meet up with fellow Jimny owners, hit the road together and finish the adventure with a coffee stop.",
-    requirements:
-      "Your Jimny, a fellow Jimny owner, camera",
-    steps: [
-      "Plan or join a small Jimny convoy",
-      "Drive together to a coffee stop",
-      "Take a photo of the Jimnys together",
-      "Submit the photo to claim your stamp",
-    ],
-    stampTitle: "The Convoy Badge",
-  },
-  {
-    id: "sleep-under-the-stars",
-    title: "Sleep Under the Stars",
-    category: "Camping",
-    duration: "1 Night",
-    difficulty: 3,
-    difficultyLabel: "Moderate",
-    description:
-      "Pack your Jimny, head outdoors and spend a night camping under the stars.",
-    requirements:
-      "Your Jimny, camping gear, camera",
-    steps: [
-      "Choose a camping destination",
-      "Pack your Jimny and travel there",
-      "Spend the night camping",
-      "Submit a photo to claim your stamp",
-    ],
-    stampTitle: "The Camping Badge",
-  },
-  {
-    id: "find-your-twin",
-    title: "Find Your Twin",
-    category: "Quick Quest",
-    duration: "30 Mins",
-    difficulty: 1,
-    difficultyLabel: "Easy",
-    description:
-      "Find another Jimny that matches yours and capture the perfect twin photo.",
-    requirements:
-      "Your Jimny, another matching Jimny, camera",
-    steps: [
-      "Keep an eye out for a matching Jimny",
-      "Park your Jimnys together",
-      "Take a twin photo",
-      "Submit the photo to claim your stamp",
-    ],
-    stampTitle: "The Twin Badge",
-  },
-  {
-    id: "road-less-travelled",
-    title: "Road Less Travelled",
-    category: "Road Trip",
-    duration: "1 Day",
-    difficulty: 2,
-    difficultyLabel: "Easy",
-    description:
-      "Leave the familiar route behind and take your Jimny somewhere you have never explored before.",
-    requirements:
-      "Your Jimny, a destination, camera",
-    steps: [
-      "Choose a road or destination you have not explored",
-      "Take your Jimny on the adventure",
-      "Stop somewhere memorable",
-      "Submit a photo to claim your stamp",
-    ],
-    stampTitle: "The Explorer Badge",
-  },
 ];
 
 function ImagePlaceholder({
@@ -235,6 +145,9 @@ export default function HomeScreen({
   onAdventures,
   onProfile,
   onQuestPress,
+  onUpcomingExperiences,
+  onNotifications,
+  notificationCount = 0,
 }: HomeScreenProps) {
   const [selectedCategory, setSelectedCategory] =
     useState("All");
@@ -258,6 +171,7 @@ export default function HomeScreen({
           <Pressable
             style={styles.headerIconButton}
             hitSlop={10}
+            onPress={onNotifications}
           >
             <MaterialIcons
               name="notifications-none"
@@ -265,11 +179,17 @@ export default function HomeScreen({
               color={colors.text}
             />
 
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationBadgeText}>
-                3
-              </Text>
-            </View>
+            {notificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text
+                  style={styles.notificationBadgeText}
+                >
+                  {notificationCount > 99
+                    ? "99+"
+                    : notificationCount}
+                </Text>
+              </View>
+            )}
           </Pressable>
 
           <Text style={styles.headerTitle}>
@@ -404,6 +324,62 @@ export default function HomeScreen({
                   </View>
                 )}
               </View>
+            </View>
+
+            {/* UPCOMING EXPERIENCES */}
+            <View style={styles.upcomingSection}>
+              <View style={styles.upcomingHeadingRow}>
+                <View style={styles.upcomingHeadingText}>
+                  <Text style={styles.sectionTitle}>
+                    UPCOMING EXPERIENCES
+                  </Text>
+
+                  <Text style={styles.upcomingIntro}>
+                    Looking for something bigger? See the
+                    upcoming Jimny experiences you can join.
+                  </Text>
+                </View>
+
+                <MaterialIcons
+                  name="event"
+                  size={27}
+                  color={colors.orange}
+                />
+              </View>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.upcomingButton,
+                  pressed && styles.pressed,
+                ]}
+                onPress={onUpcomingExperiences}
+              >
+                <View style={styles.upcomingButtonLeft}>
+                  <View style={styles.upcomingIcon}>
+                    <MaterialIcons
+                      name="calendar-month"
+                      size={25}
+                      color={colors.white}
+                    />
+                  </View>
+
+                  <View style={styles.upcomingButtonCopy}>
+                    <Text style={styles.upcomingButtonTitle}>
+                      View Upcoming Experiences
+                    </Text>
+
+                    <Text style={styles.upcomingButtonSubtitle}>
+                      Trips, gatherings and community events
+                    </Text>
+                  </View>
+                </View>
+
+                <MaterialIcons
+                  name="chevron-right"
+                  size={25}
+                  color={colors.text}
+                />
+              </Pressable>
             </View>
           </View>
         </ScrollView>
@@ -790,6 +766,93 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontFamily: fonts.regular,
     fontSize: 12,
+    color: colors.textSecondary,
+  },
+
+  upcomingSection: {
+    width: "100%",
+    marginTop: 28,
+    marginBottom: 8,
+  },
+
+  upcomingHeadingRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+
+  upcomingHeadingText: {
+    flex: 1,
+    paddingRight: 18,
+  },
+
+  upcomingIntro: {
+    marginTop: -3,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+  },
+
+  upcomingButton: {
+    width: "100%",
+    minHeight: 84,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1.5,
+    borderColor: colors.orange,
+    borderRadius: 4,
+    backgroundColor: colors.background,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  upcomingButtonLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 10,
+  },
+
+  upcomingIcon: {
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 24,
+    backgroundColor: colors.green,
+  },
+
+  upcomingButtonCopy: {
+    flex: 1,
+    marginLeft: 13,
+  },
+
+  upcomingButtonTitle: {
+    fontFamily: fonts.extraBold,
+    fontSize: 14,
+    lineHeight: 18,
+    color: colors.text,
+  },
+
+  upcomingButtonSubtitle: {
+    marginTop: 4,
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
     color: colors.textSecondary,
   },
 

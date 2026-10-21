@@ -13,6 +13,7 @@ import { colors, fonts, spacing } from "../theme/theme";
 type LandingScreenProps = {
   onExploreQuests?: () => void;
   onViewPassport?: () => void;
+  onUpcomingExperiences?: () => void;
 };
 
 type QuestCardProps = {
@@ -174,6 +175,7 @@ function EventCard({
 export default function LandingScreen({
   onExploreQuests,
   onViewPassport,
+  onUpcomingExperiences,
 }: LandingScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
@@ -268,7 +270,19 @@ export default function LandingScreen({
 
             {/* UPCOMING EXPERIENCES */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>UPCOMING EXPERIENCES</Text>
+              <View style={styles.sectionHeadingRow}>
+                <Text style={styles.sectionLabelNoMargin}>
+                  UPCOMING EXPERIENCES
+                </Text>
+
+                <Pressable
+                  onPress={onUpcomingExperiences}
+                  hitSlop={10}
+                  style={({ pressed }) => pressed && styles.pressed}
+                >
+                  <Text style={styles.viewAllText}>VIEW ALL</Text>
+                </Pressable>
+              </View>
 
               <View style={styles.eventList}>
                 {eventData.map((event) => (
@@ -282,7 +296,7 @@ export default function LandingScreen({
             source={require("../../assets/images/footer-pattern.png")}
             style={styles.footerFlags}
             resizeMode="stretch"
-            />
+          />
         </ScrollView>
 
         {/* BOTTOM ACTION AREA */}
@@ -422,6 +436,29 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     color: colors.red,
     marginBottom: 10,
+  },
+
+  sectionHeadingRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  sectionLabelNoMargin: {
+    fontFamily: fonts.extraBold,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.red,
+  },
+
+  viewAllText: {
+    fontFamily: fonts.extraBold,
+    fontSize: 10,
+    lineHeight: 15,
+    color: colors.red,
+    textDecorationLine: "underline",
   },
 
   /* OFFER */

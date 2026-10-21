@@ -61,6 +61,9 @@ type QuestTrackerScreenProps = {
   onProgressChange: (
     progress: QuestProgress
   ) => void;
+  onQuestCompleted: (
+    progress: QuestProgress
+  ) => void;
   onBackToExplore: () => void;
   onPassport: () => void;
   onAbandon: () => void;
@@ -167,6 +170,7 @@ export default function QuestTrackerScreen({
   quest,
   progress,
   onProgressChange,
+  onQuestCompleted,
   onBackToExplore,
   onPassport,
   onAbandon,
@@ -741,12 +745,14 @@ export default function QuestTrackerScreen({
     }
 
     try {
+      const completedAt =
+        Timestamp.now();
+
       const completedProgress: QuestProgress =
         {
           ...progress,
           status: "completed",
-          completedAt:
-            Timestamp.now(),
+          completedAt,
         };
 
       await updateDoc(
@@ -759,8 +765,7 @@ export default function QuestTrackerScreen({
         ),
         {
           status: "completed",
-          completedAt:
-            completedProgress.completedAt,
+          completedAt,
         }
       );
 
@@ -768,9 +773,8 @@ export default function QuestTrackerScreen({
         completedProgress
       );
 
-      Alert.alert(
-        "Side Quest Complete!",
-        `${quest.stampTitle} has been earned.`
+      onQuestCompleted(
+        completedProgress
       );
     } catch (error) {
       console.error(
