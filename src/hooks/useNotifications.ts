@@ -5,6 +5,11 @@ import {
 } from "react";
 
 import {
+  onAuthStateChanged,
+  type User,
+} from "firebase/auth";
+
+import {
   collection,
   doc,
   getDoc,
@@ -53,6 +58,13 @@ export type BackendNotificationItem =
 
 export default function useNotifications() {
   const [
+    currentUser,
+    setCurrentUser,
+  ] = useState<User | null>(
+    auth.currentUser
+  );
+
+  const [
     experiences,
     setExperiences,
   ] = useState<
@@ -63,7 +75,10 @@ export default function useNotifications() {
     notificationStates,
     setNotificationStates,
   ] = useState<
-    Record<string, NotificationState>
+    Record<
+      string,
+      NotificationState
+    >
   >({});
 
   const [
@@ -72,16 +87,47 @@ export default function useNotifications() {
   ] = useState(true);
 
   /*
+   * LISTEN FOR AUTH CHANGES
+   */
+  useEffect(() => {
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          setCurrentUser(
+            user
+          );
+
+          if (!user) {
+            setExperiences(
+              []
+            );
+
+            setNotificationStates(
+              {}
+            );
+
+            setIsLoadingNotifications(
+              false
+            );
+          } else {
+            setIsLoadingNotifications(
+              true
+            );
+          }
+        }
+      );
+
+    return unsubscribe;
+  }, []);
+
+  /*
    * LISTEN TO REAL EXPERIENCES
    */
   useEffect(() => {
-    const user =
-      auth.currentUser;
-
-    if (!user) {
-      setExperiences([]);
-      setIsLoadingNotifications(
-        false
+    if (!currentUser) {
+      setExperiences(
+        []
       );
 
       return;
@@ -105,7 +151,9 @@ export default function useNotifications() {
         (snapshot) => {
           const loadedExperiences =
             snapshot.docs.map(
-              (experienceDoc) => {
+              (
+                experienceDoc
+              ) => {
                 const data =
                   experienceDoc.data();
 
@@ -122,13 +170,16 @@ export default function useNotifications() {
                     experienceDoc.id,
 
                   title:
-                    data.title ?? "",
+                    data.title ??
+                    "",
 
                   category:
-                    data.category ?? "",
+                    data.category ??
+                    "",
 
                   date:
-                    data.date ?? "",
+                    data.date ??
+                    "",
 
                   time:
                     data.time ??
@@ -181,17 +232,14 @@ export default function useNotifications() {
       );
 
     return unsubscribe;
-  }, []);
+  }, [currentUser]);
 
   /*
    * LISTEN TO THIS USER'S
    * READ / UNREAD STATE
    */
   useEffect(() => {
-    const user =
-      auth.currentUser;
-
-    if (!user) {
+    if (!currentUser) {
       setNotificationStates(
         {}
       );
@@ -203,7 +251,7 @@ export default function useNotifications() {
       collection(
         db,
         "users",
-        user.uid,
+        currentUser.uid,
         "notificationStates"
       );
 
@@ -253,7 +301,7 @@ export default function useNotifications() {
       );
 
     return unsubscribe;
-  }, []);
+  }, [currentUser]);
 
   /*
    * TURN BACKEND EXPERIENCES
@@ -274,10 +322,6 @@ export default function useNotifications() {
         );
 
       return experiences
-        /*
-         * Only upcoming experiences
-         * belong in this feed.
-         */
         .filter(
           (experience) => {
             if (
@@ -307,11 +351,6 @@ export default function useNotifications() {
                 notificationId
               ];
 
-            /*
-             * If the experience was edited
-             * after the user last opened it,
-             * it becomes an EVENT UPDATE.
-             */
             const hasBeenUpdated =
               !!state
                 ?.lastSeenUpdatedAt &&
@@ -356,11 +395,6 @@ export default function useNotifications() {
                   notificationDate
                 ),
 
-              /*
-               * An update after the last
-               * viewed version becomes
-               * unread again automatically.
-               */
               isRead:
                 hasBeenUpdated
                   ? false
@@ -408,10 +442,7 @@ export default function useNotifications() {
     async (
       notification: BackendNotificationItem
     ) => {
-      const user =
-        auth.currentUser;
-
-      if (!user) {
+      if (!currentUser) {
         return;
       }
 
@@ -420,7 +451,7 @@ export default function useNotifications() {
           doc(
             db,
             "users",
-            user.uid,
+            currentUser.uid,
             "notificationStates",
             notification.id
           );
@@ -465,10 +496,7 @@ export default function useNotifications() {
    */
   const markAllAsRead =
     async () => {
-      const user =
-        auth.currentUser;
-
-      if (!user) {
+      if (!currentUser) {
         return;
       }
 
@@ -494,7 +522,7 @@ export default function useNotifications() {
               doc(
                 db,
                 "users",
-                user.uid,
+                currentUser.uid,
                 "notificationStates",
                 notification.id
               );
@@ -577,16 +605,20 @@ export default function useNotifications() {
             snapshot.id,
 
           title:
-            data.title ?? "",
+            data.title ??
+            "",
 
           category:
-            data.category ?? "",
+            data.category ??
+            "",
 
           date:
-            data.date ?? "",
+            data.date ??
+            "",
 
           eventDate:
-            data.eventDate ?? "",
+            data.eventDate ??
+            "",
 
           time:
             data.time ??
@@ -602,19 +634,23 @@ export default function useNotifications() {
                 "",
 
           description:
-            data.description ?? "",
+            data.description ??
+            "",
 
           locationPlaceId:
             data.location
-              ?.placeId ?? null,
+              ?.placeId ??
+            null,
 
           latitude:
             data.location
-              ?.latitude ?? null,
+              ?.latitude ??
+            null,
 
           longitude:
             data.location
-              ?.longitude ?? null,
+              ?.longitude ??
+            null,
         };
       } catch (error) {
         console.error(
@@ -704,7 +740,10 @@ function getSection(
     60 *
     1000;
 
-  if (difference < oneDay) {
+  if (
+    difference <
+    oneDay
+  ) {
     return "TODAY";
   }
 
@@ -747,11 +786,15 @@ function formatNotificationTime(
         60000
     );
 
-  if (minutes < 1) {
+  if (
+    minutes < 1
+  ) {
     return "Just now";
   }
 
-  if (minutes < 60) {
+  if (
+    minutes < 60
+  ) {
     return `${minutes} min ago`;
   }
 
@@ -760,7 +803,9 @@ function formatNotificationTime(
       minutes / 60
     );
 
-  if (hours < 24) {
+  if (
+    hours < 24
+  ) {
     return `${hours} ${
       hours === 1
         ? "hour"
