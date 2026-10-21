@@ -1,4 +1,7 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 import { StatusBar } from "expo-status-bar";
 import {
   Inter_400Regular,
@@ -15,6 +18,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  onAuthStateChanged,
+} from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -104,6 +110,19 @@ export default function App() {
   const [screen, setScreen] =
     useState<Screen>("login");
 
+  /*
+   * AUTH STARTUP
+   *
+   * We wait for Firebase to restore
+   * the persisted authentication
+   * session before deciding whether
+   * Login or Landing should be shown.
+   */
+  const [
+    isCheckingAuth,
+    setIsCheckingAuth,
+  ] = useState(true);
+
   const [
     upcomingExperiencesBackScreen,
     setUpcomingExperiencesBackScreen,
@@ -177,6 +196,72 @@ export default function App() {
     });
 
   /*
+   * RESTORE SAVED LOGIN
+   */
+  useEffect(() => {
+    let hasResolvedInitialAuth =
+      false;
+
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          /*
+           * Only use the first auth result
+           * to decide the startup screen.
+           *
+           * This prevents later sign-out
+           * events from fighting with the
+           * existing profile navigation.
+           */
+          if (
+            !hasResolvedInitialAuth
+          ) {
+            hasResolvedInitialAuth =
+              true;
+
+            if (user) {
+              setScreen(
+                "landing"
+              );
+            } else {
+              setScreen(
+                "login"
+              );
+            }
+
+            setIsCheckingAuth(
+              false
+            );
+          }
+        },
+        (error) => {
+          console.error(
+            "Unable to restore authentication session:",
+            error
+          );
+
+          if (
+            !hasResolvedInitialAuth
+          ) {
+            hasResolvedInitialAuth =
+              true;
+
+            setScreen(
+              "login"
+            );
+
+            setIsCheckingAuth(
+              false
+            );
+          }
+        }
+      );
+
+    return unsubscribe;
+  }, []);
+
+  /*
    * REAL BACKEND NOTIFICATIONS
    */
   const {
@@ -189,11 +274,28 @@ export default function App() {
     getExperienceFromNotification,
   } = useNotifications();
 
-  if (!fontsLoaded) {
+  if (
+    !fontsLoaded ||
+    isCheckingAuth
+  ) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator />
-      </View>
+      <SafeAreaProvider>
+        <StatusBar
+          style="dark"
+        />
+
+        <View
+          style={
+            styles.loading
+          }
+        >
+          <ActivityIndicator
+            color={
+              colors.green
+            }
+          />
+        </View>
+      </SafeAreaProvider>
     );
   }
 

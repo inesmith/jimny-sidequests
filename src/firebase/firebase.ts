@@ -4,16 +4,29 @@ import {
   initializeApp,
 } from "firebase/app";
 
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth,
+} from "firebase/auth";
 
-import { getFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { getStorage } from "firebase/storage";
+import {
+  getFirestore,
+} from "firebase/firestore";
 
-import { getFunctions } from "firebase/functions";
+import {
+  getStorage,
+} from "firebase/storage";
+
+import {
+  getFunctions,
+} from "firebase/functions";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA5BXwIxtDbUk6QXMYoF7QgiMpwpjqQ5UU",
+  apiKey:
+    "AIzaSyA5BXwIxtDbUk6QXMYoF7QgiMpwpjqQ5UU",
 
   authDomain:
     "jimny-side-quests.firebaseapp.com",
@@ -36,7 +49,29 @@ const app =
     ? initializeApp(firebaseConfig)
     : getApp();
 
-const auth = getAuth(app);
+/*
+ * AUTH
+ *
+ * Firebase Auth uses AsyncStorage
+ * to persist the user's session
+ * between app restarts.
+ */
+let auth;
+
+try {
+  auth = initializeAuth(app, {
+    persistence:
+      getReactNativePersistence(
+        AsyncStorage
+      ),
+  });
+} catch {
+  /*
+   * Expo Fast Refresh may reach this
+   * if Auth is already initialized.
+   */
+  auth = getAuth(app);
+}
 
 const db =
   getFirestore(app);
