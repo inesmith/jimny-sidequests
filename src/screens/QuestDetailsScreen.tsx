@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   questTitle: {
     marginTop: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 28,
+    fontSize: 22,
     lineHeight: 34,
     color: colors.text,
   },
