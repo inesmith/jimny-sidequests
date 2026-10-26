@@ -85,6 +85,7 @@ type Screen =
   | "home"
   | "notifications"
   | "myAdventures"
+  | "adventures"
   | "upcomingExperiences"
   | "experienceDetails"
   | "questDetails"
@@ -98,7 +99,6 @@ type Screen =
   | "editProfile";
 
 type UpcomingExperiencesOrigin =
-  | "landing"
   | "home"
   | "myAdventures";
 
@@ -108,20 +108,38 @@ type ExperienceDetailsOrigin =
 
 export default function App() {
   const [screen, setScreen] =
-    useState<Screen>("login");
+    useState<Screen>("landing");
 
   /*
    * AUTH STARTUP
    *
-   * We wait for Firebase to restore
-   * the persisted authentication
-   * session before deciding whether
-   * Login or Landing should be shown.
+   * LandingScreen is now our startup
+   * screen while Firebase restores the
+   * saved authentication session.
    */
   const [
     isCheckingAuth,
     setIsCheckingAuth,
   ] = useState(true);
+
+  /*
+   * SMALL LANDING DISPLAY TIME
+   *
+   * This gives the branded startup
+   * screen enough time to be visible
+   * instead of flashing past instantly.
+   */
+  const [
+    hasMinimumLandingTimePassed,
+    setHasMinimumLandingTimePassed,
+  ] = useState(false);
+
+  const [
+    initialUserAuthenticated,
+    setInitialUserAuthenticated,
+  ] = useState<boolean | null>(
+    null
+  );
 
   const [
     upcomingExperiencesBackScreen,
@@ -196,6 +214,23 @@ export default function App() {
     });
 
   /*
+   * MINIMUM LANDING DISPLAY TIME
+   */
+  useEffect(() => {
+    const timer = setTimeout(
+      () => {
+        setHasMinimumLandingTimePassed(
+          true
+        );
+      },
+      1600
+    );
+
+    return () =>
+      clearTimeout(timer);
+  }, []);
+
+  /*
    * RESTORE SAVED LOGIN
    */
   useEffect(() => {
@@ -206,29 +241,15 @@ export default function App() {
       onAuthStateChanged(
         auth,
         (user) => {
-          /*
-           * Only use the first auth result
-           * to decide the startup screen.
-           *
-           * This prevents later sign-out
-           * events from fighting with the
-           * existing profile navigation.
-           */
           if (
             !hasResolvedInitialAuth
           ) {
             hasResolvedInitialAuth =
               true;
 
-            if (user) {
-              setScreen(
-                "landing"
-              );
-            } else {
-              setScreen(
-                "login"
-              );
-            }
+            setInitialUserAuthenticated(
+              Boolean(user)
+            );
 
             setIsCheckingAuth(
               false
@@ -247,8 +268,8 @@ export default function App() {
             hasResolvedInitialAuth =
               true;
 
-            setScreen(
-              "login"
+            setInitialUserAuthenticated(
+              false
             );
 
             setIsCheckingAuth(
@@ -260,6 +281,42 @@ export default function App() {
 
     return unsubscribe;
   }, []);
+
+  /*
+   * LEAVE STARTUP LANDING
+   *
+   * We wait for:
+   * 1. Firebase auth restoration
+   * 2. Fonts
+   * 3. Minimum landing display time
+   *
+   * Returning user -> Explore
+   * Logged-out user -> Login
+   */
+  useEffect(() => {
+    if (
+      isCheckingAuth ||
+      !fontsLoaded ||
+      !hasMinimumLandingTimePassed ||
+      initialUserAuthenticated ===
+        null
+    ) {
+      return;
+    }
+
+    if (
+      initialUserAuthenticated
+    ) {
+      setScreen("home");
+    } else {
+      setScreen("login");
+    }
+  }, [
+    fontsLoaded,
+    hasMinimumLandingTimePassed,
+    initialUserAuthenticated,
+    isCheckingAuth,
+  ]);
 
   /*
    * REAL BACKEND NOTIFICATIONS
@@ -274,9 +331,13 @@ export default function App() {
     getExperienceFromNotification,
   } = useNotifications();
 
+  /*
+   * STARTUP LANDING
+   */
   if (
+    isCheckingAuth ||
     !fontsLoaded ||
-    isCheckingAuth
+    !hasMinimumLandingTimePassed
   ) {
     return (
       <SafeAreaProvider>
@@ -284,17 +345,7 @@ export default function App() {
           style="dark"
         />
 
-        <View
-          style={
-            styles.loading
-          }
-        >
-          <ActivityIndicator
-            color={
-              colors.green
-            }
-          />
-        </View>
+        <LandingScreen />
       </SafeAreaProvider>
     );
   }
@@ -378,9 +429,36 @@ export default function App() {
   };
 
   /*
-   * OPEN ADVENTURES
+   * OPEN ADVENTURES TAB
+   *
+   * This is now the Hibernate screen:
+   * Popular Locations + Jimny's Near You.
    */
   const openAdventures =
+    () => {
+      const user =
+        auth.currentUser;
+
+      if (!user) {
+        setScreen(
+          "login"
+        );
+
+        return;
+      }
+
+      setScreen(
+        "adventures"
+      );
+    };
+
+  /*
+   * OPEN MY ADVENTURES & STATS
+   *
+   * This is only accessed from
+   * the Profile tools section.
+   */
+  const openMyAdventures =
     () => {
       const user =
         auth.currentUser;
@@ -440,10 +518,6 @@ export default function App() {
           true
         );
 
-        /*
-         * Persist READ state
-         * in Firestore.
-         */
         await markNotificationAsRead(
           backendNotification
         );
@@ -488,9 +562,6 @@ export default function App() {
 
         /*
          * STAMP
-         *
-         * Real stamp notifications
-         * will be connected next.
          */
         if (
           backendNotification.type ===
@@ -1079,7 +1150,7 @@ export default function App() {
           }
           onLogin={() =>
             setScreen(
-              "landing"
+              "home"
             )
           }
         />
@@ -1093,26 +1164,12 @@ export default function App() {
       screen === "landing"
     ) {
       return (
-        <LandingScreen
-          onExploreQuests={() =>
-            setScreen(
-              "home"
-            )
-          }
-          onViewPassport={
-            openPassport
-          }
-          onUpcomingExperiences={() =>
-            openUpcomingExperiences(
-              "landing"
-            )
-          }
-        />
+        <LandingScreen />
       );
     }
 
     /*
-     * HOME
+     * HOME / EXPLORE
      */
     if (
       screen === "home"
@@ -1141,6 +1198,37 @@ export default function App() {
           }
           notificationCount={
             unreadNotificationCount
+          }
+        />
+      );
+    }
+
+    /*
+     * ADVENTURES TAB
+     *
+     * Popular Locations +
+     * Jimny's Near You.
+     */
+    if (
+      screen ===
+      "adventures"
+    ) {
+      return (
+        <HibernateScreen
+          mode="adventures"
+          onExplore={() =>
+            setScreen(
+              "home"
+            )
+          }
+          onAdventures={
+            openAdventures
+          }
+          onPassport={
+            openPassport
+          }
+          onProfile={
+            openProfile
           }
         />
       );
@@ -1188,7 +1276,9 @@ export default function App() {
     }
 
     /*
-     * MY ADVENTURES
+     * MY ADVENTURES & STATS
+     *
+     * Only reached from Profile.
      */
     if (
       screen ===
@@ -1454,7 +1544,11 @@ export default function App() {
     }
 
     /*
-     * HIBERNATE
+     * HIBERNATE — QUEST MODE
+     *
+     * This is only used when the
+     * active quest asks the user
+     * to find/select a trail.
      */
     if (
       screen ===
@@ -1464,6 +1558,7 @@ export default function App() {
     ) {
       return (
         <HibernateScreen
+          mode="quest"
           onBack={() =>
             setScreen(
               "questTracker"
@@ -1482,6 +1577,9 @@ export default function App() {
           }
           onPassport={
             openPassport
+          }
+          onProfile={
+            openProfile
           }
         />
       );
@@ -1581,9 +1679,14 @@ export default function App() {
               "home"
             )
           }
+
           onAdventures={
             openAdventures
           }
+          onMyAdventures={
+            openMyAdventures
+          }
+
           onPassport={
             openPassport
           }
@@ -1632,7 +1735,7 @@ export default function App() {
         }
         onLogin={() =>
           setScreen(
-            "landing"
+            "home"
           )
         }
       />

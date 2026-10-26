@@ -1,6 +1,6 @@
 export const colors = {
-  background: "#FAF3E9",
-  surface: "#FFFDF9",
+  background: "#fffbf6",
+  surface: "#fffbf6",
   text: "#111827",
   textSecondary: "#596273",
   red: "#D91E0B",
@@ -8,7 +8,7 @@ export const colors = {
   green: "#063F27",
   border: "#FF7A00",
   divider: "#DDD6CC",
-  white: "#FAF3E9",
+  white: "#fffbf6",
 };
 
 export const fonts = {

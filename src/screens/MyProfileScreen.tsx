@@ -33,7 +33,21 @@ import {
 
 type MyProfileScreenProps = {
   onExplore: () => void;
+
+  /*
+   * MAIN BOTTOM NAV ADVENTURES
+   * Opens Popular Locations /
+   * Jimny's Near You.
+   */
   onAdventures: () => void;
+
+  /*
+   * PROFILE ADVENTURES
+   * Opens the existing
+   * My Adventures & Stats screen.
+   */
+  onMyAdventures: () => void;
+
   onPassport: () => void;
   onCreatePassport: () => void;
   onEditProfile: () => void;
@@ -79,6 +93,7 @@ type PassportData = {
 export default function MyProfileScreen({
   onExplore,
   onAdventures,
+  onMyAdventures,
   onPassport,
   onCreatePassport,
   onEditProfile,
@@ -761,10 +776,7 @@ export default function MyProfileScreen({
               PASSPORT & TOOLS
             </Text>
 
-            {/* ================================= */}
             {/* PASSPORT EXISTS */}
-            {/* ================================= */}
-
             {hasPassport ? (
               <>
                 <ToolButton
@@ -779,7 +791,7 @@ export default function MyProfileScreen({
                   icon="monitor-heart"
                   title="My Adventures & Stats"
                   onPress={
-                    onAdventures
+                    onMyAdventures
                   }
                 />
 
@@ -793,10 +805,7 @@ export default function MyProfileScreen({
               </>
             ) : (
               <>
-                {/* ================================= */}
                 {/* NO PASSPORT YET */}
-                {/* ================================= */}
-
                 <View
                   style={
                     styles.passportStartCard
@@ -893,7 +902,7 @@ export default function MyProfileScreen({
                   icon="monitor-heart"
                   title="My Adventures & Stats"
                   onPress={
-                    onAdventures
+                    onMyAdventures
                   }
                 />
 
@@ -1225,25 +1234,19 @@ const styles =
 
     header: {
       height: 72,
-
       flexDirection: "row",
       alignItems: "center",
-
       paddingHorizontal: 18,
-
       borderBottomWidth:
         StyleSheet.hairlineWidth,
-
       borderBottomColor:
         colors.divider,
-
       backgroundColor:
         colors.background,
     },
 
     headerSide: {
       width: 72,
-
       flexDirection: "row",
       alignItems: "center",
     },
@@ -1255,14 +1258,10 @@ const styles =
 
     headerTitle: {
       flex: 1,
-
       textAlign: "center",
-
       fontFamily:
         fonts.extraBold,
-
       fontSize: 20,
-
       color: colors.red,
     },
 
@@ -1281,9 +1280,7 @@ const styles =
     content: {
       width: "100%",
       maxWidth: 520,
-
       alignSelf: "center",
-
       paddingHorizontal: 16,
       paddingTop: 20,
     },
@@ -1295,20 +1292,14 @@ const styles =
     profilePhoto: {
       width: 116,
       height: 116,
-
       alignSelf: "center",
-
       alignItems: "center",
       justifyContent:
         "center",
-
       overflow: "hidden",
-
       borderRadius: 58,
-
       borderWidth: 1.5,
       borderColor: colors.red,
-
       backgroundColor:
         colors.background,
     },
@@ -1321,45 +1312,34 @@ const styles =
     initials: {
       fontFamily:
         fonts.extraBold,
-
       fontSize: 30,
-
       color: colors.green,
     },
 
     profileName: {
       marginTop: 16,
-
       textAlign: "center",
-
       fontFamily:
         fonts.extraBold,
-
       fontSize: 25,
       lineHeight: 31,
-
       color: colors.text,
     },
 
     vehicleLine: {
       marginTop: 3,
-
       flexDirection: "row",
       flexWrap: "wrap",
-
       alignItems: "center",
       justifyContent:
         "center",
-
       paddingHorizontal: 12,
     },
 
     vehicleText: {
       fontFamily:
         fonts.semiBold,
-
       fontSize: 17,
-
       color:
         colors.textSecondary,
     },
@@ -1367,11 +1347,8 @@ const styles =
     vehicleDot: {
       width: 6,
       height: 6,
-
       marginHorizontal: 10,
-
       borderRadius: 3,
-
       backgroundColor:
         "#A7ADB7",
     },
@@ -1379,36 +1356,26 @@ const styles =
     vehicleNickname: {
       fontFamily:
         fonts.extraBold,
-
       fontSize: 17,
-
       color: colors.text,
     },
 
     noJimnyText: {
       marginTop: 3,
-
       textAlign: "center",
-
       fontFamily:
         fonts.regular,
-
       fontSize: 13,
-
       color:
         colors.textSecondary,
     },
 
     locationText: {
       marginTop: 6,
-
       textAlign: "center",
-
       fontFamily:
         fonts.regular,
-
       fontSize: 11,
-
       color:
         colors.textSecondary,
     },
@@ -1419,57 +1386,40 @@ const styles =
 
     statsRow: {
       width: "100%",
-
       marginTop: 22,
-
       flexDirection: "row",
-
       gap: 12,
     },
 
     statCard: {
       flex: 1,
       minWidth: 0,
-
       minHeight: 82,
-
       alignItems: "center",
       justifyContent:
         "center",
-
       paddingHorizontal: 6,
-
       borderRadius: 4,
-
       backgroundColor:
         colors.green,
     },
 
     statValue: {
       width: "100%",
-
       textAlign: "center",
-
       fontFamily:
         fonts.extraBold,
-
       fontSize: 22,
-
       color: colors.white,
     },
 
     statLabel: {
       width: "100%",
-
       marginTop: 4,
-
       textAlign: "center",
-
       fontFamily:
         fonts.semiBold,
-
       fontSize: 10,
-
       color: colors.white,
     },
 
@@ -1480,12 +1430,9 @@ const styles =
     sectionTitle: {
       marginTop: 28,
       marginBottom: 13,
-
       fontFamily:
         fonts.extraBold,
-
       fontSize: 14,
-
       color: colors.red,
     },
 
@@ -1495,38 +1442,25 @@ const styles =
 
     toolButton: {
       width: "100%",
-
       minHeight: 66,
-
       marginBottom: 13,
-
       flexDirection: "row",
       alignItems: "center",
-
       gap: 14,
-
       paddingHorizontal: 17,
-
       borderWidth: 1.5,
       borderColor:
         colors.orange,
-
       borderRadius: 4,
-
       backgroundColor:
         colors.background,
-
       shadowColor: "#000000",
-
       shadowOffset: {
         width: 0,
         height: 3,
       },
-
       shadowOpacity: 0.13,
-
       shadowRadius: 4,
-
       elevation: 3,
     },
 
@@ -1536,12 +1470,9 @@ const styles =
 
     toolTitle: {
       flex: 1,
-
       fontFamily:
         fonts.extraBold,
-
       fontSize: 16,
-
       color: colors.text,
     },
 
@@ -1551,17 +1482,12 @@ const styles =
 
     passportStartCard: {
       width: "100%",
-
       marginBottom: 13,
-
       padding: 16,
-
       borderWidth: 1.5,
       borderColor:
         colors.green,
-
       borderRadius: 4,
-
       backgroundColor:
         colors.background,
     },
@@ -1574,17 +1500,13 @@ const styles =
     passportIconBox: {
       width: 48,
       height: 48,
-
       alignItems: "center",
       justifyContent:
         "center",
-
       borderWidth: 1,
       borderColor:
         colors.green,
-
       borderRadius: 4,
-
       marginRight: 14,
     },
 
@@ -1595,85 +1517,62 @@ const styles =
     passportStartTitle: {
       fontFamily:
         fonts.extraBold,
-
       fontSize: 16,
-
       color: colors.text,
     },
 
     passportStartSubtitle: {
       marginTop: 2,
-
       fontFamily:
         fonts.regular,
-
       fontSize: 11,
-
       color:
         colors.textSecondary,
     },
 
     passportStartBody: {
       marginTop: 14,
-
       fontFamily:
         fonts.regular,
-
       fontSize: 13,
       lineHeight: 19,
-
       color:
         colors.textSecondary,
     },
 
     passportStartStrong: {
       marginTop: 8,
-
       fontFamily:
         fonts.semiBold,
-
       fontSize: 12,
       lineHeight: 17,
-
       color: colors.green,
     },
 
     createPassportButton: {
       width: "100%",
-
       minHeight: 48,
-
       marginTop: 14,
-
       alignItems: "center",
       justifyContent:
         "center",
-
       borderRadius: 4,
-
       backgroundColor:
         colors.green,
-
       shadowColor: "#000000",
-
       shadowOffset: {
         width: 0,
         height: 3,
       },
-
       shadowOpacity: 0.16,
-
       shadowRadius: 4,
-
       elevation: 3,
     },
 
     createPassportButtonText: {
       fontFamily:
         fonts.extraBold,
-
       fontSize: 14,
-
       color: colors.white,
     },
 
@@ -1683,20 +1582,15 @@ const styles =
 
     bottomNav: {
       minHeight: 86,
-
       flexDirection: "row",
       alignItems: "stretch",
-
       paddingHorizontal: 15,
       paddingTop: 8,
       paddingBottom: 5,
-
       borderTopWidth:
         StyleSheet.hairlineWidth,
-
       borderTopColor:
         colors.divider,
-
       backgroundColor:
         colors.background,
     },
@@ -1704,42 +1598,31 @@ const styles =
     navItem: {
       flex: 1,
       minWidth: 0,
-
       alignItems: "center",
       justifyContent:
         "center",
-
       gap: 4,
-
       borderRadius: 3,
     },
 
     navItemSelected: {
       backgroundColor:
         colors.orange,
-
       shadowColor: "#000000",
-
       shadowOffset: {
         width: 0,
         height: 3,
       },
-
       shadowOpacity: 0.18,
-
       shadowRadius: 4,
-
       elevation: 4,
     },
 
     navText: {
       fontFamily:
         fonts.medium,
-
       fontSize: 10,
-
       color: colors.text,
-
       textAlign: "center",
     },
 

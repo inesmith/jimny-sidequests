@@ -82,7 +82,7 @@ const storage =
 const functions =
   getFunctions(
     app,
-    "africa-south1"
+    "us-central1"
   );
 
 export {

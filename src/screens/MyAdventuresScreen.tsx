@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontFamily:
       fonts.extraBold,
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 23,
     color: colors.red,
   },
@@ -1065,7 +1065,7 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: 0,
-    minHeight: 88,
+    minHeight: 80,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 5,
@@ -1120,14 +1120,14 @@ const styles = StyleSheet.create({
   completionTitle: {
     fontFamily:
       fonts.extraBold,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.text,
   },
 
   completionPercentage: {
     fontFamily:
       fonts.extraBold,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.text,
   },
 
@@ -1169,7 +1169,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontFamily:
       fonts.extraBold,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 17,
     color: colors.red,
   },
@@ -1220,7 +1220,7 @@ const styles = StyleSheet.create({
   completedQuestTitle: {
     fontFamily:
       fonts.extraBold,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 18,
     color: colors.text,
   },
@@ -1298,7 +1298,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     fontFamily:
       fonts.extraBold,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.text,
   },
 

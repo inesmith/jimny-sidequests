@@ -30,7 +30,8 @@
           "locationWhenInUsePermission": "Allow Jimny Side Quests to use your location to find trails and Jimny adventures near you."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-status-bar"
     ]
   }
 }

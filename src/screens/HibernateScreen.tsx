@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Alert,
+  Linking,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,20 +17,47 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import MapView, {
   Marker,
+  Circle,
   type Region,
 } from "react-native-maps";
 import * as Location from "expo-location";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 import { colors, fonts } from "../theme/theme";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../firebase/firebase";
+
+type PlaceSuggestion = { placeId: string; description: string };
+
+const PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? "";
 
 type HibernateTab =
   | "popular"
   | "jimnys";
 
+type HibernateMode =
+  | "adventures"
+  | "quest";
+
 type TrailDifficulty =
   | "Easy"
   | "Medium"
-  | "Hard";
+  | "Hard"
+  | "Unrated";
+
+type TrailResearchResult = {
+  placeId: string;
+  name: string;
+  website: string | null;
+  googleMapsUrl: string | null;
+  trailLengthKm: number | null;
+  estimatedDuration: string | null;
+  terrain: string[];
+  sourceUrl: string | null;
+  researchStatus: "needs_research";
+};
+
+const getTrailResearch = httpsCallable<{placeId: string}, TrailResearchResult>(functions, "getTrailResearch");
 
 type Trail = {
   id: string;
@@ -52,57 +81,79 @@ type NearbyJimny = {
 };
 
 type HibernateScreenProps = {
-  onBack: () => void;
-  onTrailSelected: (
+  mode?: HibernateMode;
+
+  onBack?: () => void;
+
+  onTrailSelected?: (
     trailName: string
   ) => Promise<void> | void;
+
   onExplore: () => void;
   onAdventures: () => void;
   onPassport: () => void;
+  onProfile: () => void;
 };
 
-const TRAILS: Trail[] = [
-  {
-    id: "highveld-ridge",
-    name: "Highveld Ridge",
-    trailDistance: 4.8,
-    duration: "1.5 hrs",
-    terrain: "Gravel",
-    difficulty: "Easy",
-    latitude: -25.8645,
-    longitude: 28.2107,
-  },
-  {
-    id: "riverbed-loop",
-    name: "Riverbed Loop",
-    trailDistance: 6.2,
-    duration: "2.2 hrs",
-    terrain: "Sand / Rock",
-    difficulty: "Medium",
-    latitude: -25.883,
-    longitude: 28.226,
-  },
-  {
-    id: "granite-pass",
-    name: "Granite Pass",
-    trailDistance: 8.5,
-    duration: "3.0 hrs",
-    terrain: "Rock / Steep",
-    difficulty: "Hard",
-    latitude: -25.895,
-    longitude: 28.192,
-  },
-  {
-    id: "valley-wash",
-    name: "Valley Wash",
-    trailDistance: 3.1,
-    duration: "1.1 hrs",
-    terrain: "Sand",
-    difficulty: "Easy",
-    latitude: -25.849,
-    longitude: 28.238,
-  },
-];
+// Google Places Text Search (New) returns destinations, not full trail geometry.
+// A place appearing in Google Maps does not verify public access or 4x4 suitability.
+type GoogleTrailPlace = {
+  id?: string;
+  displayName?: { text?: string };
+  location?: { latitude?: number; longitude?: number };
+  formattedAddress?: string;
+  types?: string[];
+  primaryType?: string;
+};
+
+// Filter obvious retailers and known false positives, but don't require
+// "4x4" in the name: genuine trails can have names such as "De Wildt".
+const EXCLUDED_PLACE_NAMES = /\b(?:4\s*[x×]\s*4\s*mega\s*world|big\s*red\s*barn|accessories|spares|fitment|workshop|dealership|tyres|tires|parts\s*shop|equipment\s*shop)\b/i;
+const EXCLUDED_NON_TRAILS =
+  /\b(?:acrobranch|caravan|caravans|camping\s+equipment|adventure\s+direct|zipline|zip\s*line|tree\s*top|treetop|paintball|quad\s*bike\s*rental)\b/i;
+const RETAIL_NAME = /\b(?:shop|store|outlet|showroom|supplies|accessories|fitment|dealership|spares)\b/i;
+const STRONG_TRAIL_NAME = /\b(?:4\s*[x×]\s*4|4wd|off[ -]?road|trail|trails|route|routes|adventure\s*park|obstacle|rock\s*crawl)\b/i;
+
+function isLikelyOffroadDestination(
+  place: GoogleTrailPlace
+): boolean {
+  const name = place.displayName?.text ?? "";
+
+  if (
+    EXCLUDED_PLACE_NAMES.test(name) ||
+    EXCLUDED_NON_TRAILS.test(name) ||
+    RETAIL_NAME.test(name)
+  ) {
+    return false;
+  }
+
+  const hasTrailName = STRONG_TRAIL_NAME.test(name);
+
+  return hasTrailName;
+}
+
+const TRAIL_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
+const TRAIL_SEARCH_TERMS = ["4x4 trail", "off road park", "4x4 route"];
+// Keep searches bounded to avoid unexpected Google Places charges.
+const MAX_SEARCH_REQUESTS = 6;
+const TRAIL_SEARCH_TIMEOUT_MS = 9000;
+
+// Search the user's centre first, then a few surrounding areas. These are
+// sampled results, NOT a complete inventory of every trail in a large circle.
+function searchCentres(latitude: number, longitude: number, radiusKm: number) {
+  const centres = [{ latitude, longitude }];
+  if (radiusKm <= 50) return centres;
+  const distanceKm = Math.min(radiusKm * 0.65, 850);
+  const longitudeScale = Math.max(0.2, Math.abs(Math.cos(degreesToRadians(latitude))));
+  for (const bearing of [0, 90, 180, 270]) {
+    const angle = degreesToRadians(bearing);
+    centres.push({
+      latitude: Math.max(-89, Math.min(89, latitude + (Math.cos(angle) * distanceKm) / 111.2)),
+      longitude: longitude + (Math.sin(angle) * distanceKm) / (111.2 * longitudeScale),
+    });
+  }
+  return centres;
+}
 
 const NEARBY_JIMNYS: NearbyJimny[] = [
   {
@@ -191,11 +242,13 @@ function calculateDistanceKm(
 }
 
 export default function HibernateScreen({
+  mode = "quest",
   onBack,
   onTrailSelected,
   onExplore,
   onAdventures,
   onPassport,
+  onProfile,
 }: HibernateScreenProps) {
   const mapRef =
     useRef<MapView | null>(null);
@@ -218,11 +271,103 @@ export default function HibernateScreen({
   const [travelRadius, setTravelRadius] =
     useState(10);
 
+  const [discoveredTrails, setDiscoveredTrails] = useState<Trail[]>([]);
+  const [isLoadingTrails, setIsLoadingTrails] = useState(false);
+  const [trailSearchError, setTrailSearchError] = useState("");
+  const trailSearchRequest = useRef(0);
+
   const [sliderWidth, setSliderWidth] =
     useState(0);
 
   const [expandedTrail, setExpandedTrail] =
     useState<string | null>(null);
+  const [trailDetails, setTrailDetails] = useState<Record<string, TrailResearchResult>>({});
+  const [trailDetailsLoading, setTrailDetailsLoading] = useState<string | null>(null);
+  const [trailDetailsErrors, setTrailDetailsErrors] = useState<Record<string, string>>({});
+
+  const toggleTrailDetails = async (trail: Trail, retry = false) => {
+    if (!retry && expandedTrail === trail.id) {
+      setExpandedTrail(null);
+      return;
+    }
+    setExpandedTrail(trail.id);
+    if (trailDetails[trail.id] || trailDetailsLoading === trail.id) return;
+    setTrailDetailsLoading(trail.id);
+    setTrailDetailsErrors((previous) => ({...previous, [trail.id]: ""}));
+    try {
+      const response = await getTrailResearch({placeId: trail.id});
+      setTrailDetails((previous) => ({...previous, [trail.id]: response.data}));
+    } catch (error) {
+      console.warn("Unable to load trail details:", error);
+      setTrailDetailsErrors((previous) => ({
+        ...previous,
+        [trail.id]: "Couldn't load destination details. Please try again.",
+      }));
+    } finally {
+      setTrailDetailsLoading((current) => current === trail.id ? null : current);
+    }
+  };
+
+  const openDestinationLink = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Unable to open link", "Please try again later.");
+    }
+  };
+
+  const openMapsChooser = (trail: Trail) => {
+  const destination = encodeURIComponent(trail.name);
+
+  const googleMapsUrl =
+    `https://www.google.com/maps/search/?api=1&query=${destination}&query_place_id=${encodeURIComponent(trail.id)}`;
+
+  const appleMapsUrl =
+    `https://maps.apple.com/?ll=${trail.latitude},${trail.longitude}&q=${destination}`;
+
+  const wazeUrl =
+    `https://waze.com/ul?ll=${trail.latitude}%2C${trail.longitude}&navigate=yes`;
+
+  const options: {
+    text: string;
+    onPress?: () => void;
+    style?: "cancel";
+  }[] = [];
+
+  if (Platform.OS === "ios") {
+    options.push({
+      text: "Apple Maps",
+      onPress: () => {
+        void openDestinationLink(appleMapsUrl);
+      },
+    });
+  }
+
+  options.push(
+        {
+        text: "Google Maps",
+        onPress: () => {
+            void openDestinationLink(googleMapsUrl);
+        },
+        },
+        {
+        text: "Waze",
+        onPress: () => {
+            void openDestinationLink(wazeUrl);
+        },
+        },
+        {
+        text: "Cancel",
+        style: "cancel",
+        }
+    );
+
+    Alert.alert(
+        "Open in Maps",
+        "Choose your preferred navigation app",
+        options
+    );
+    };
 
   const [isSelectingTrail, setIsSelectingTrail] =
     useState(false);
@@ -233,12 +378,75 @@ export default function HibernateScreen({
   const [meetLocation, setMeetLocation] =
     useState("");
 
-  const [meetDate, setMeetDate] =
-    useState("");
+  const [meetDate, setMeetDate] = useState<Date | null>(null);
+  const [datePickerMode, setDatePickerMode] = useState<"date" | "time" | null>(null);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const placeRequestId = useRef(0);
+
 
   const [meetMessage, setMeetMessage] =
     useState("");
 
+  useEffect(() => {
+    const query = meetLocation.trim();
+    const requestId = ++placeRequestId.current;
+    if (selectedPlaceId || query.length < 3 || !PLACES_API_KEY) {
+      setSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": PLACES_API_KEY,
+          },
+          body: JSON.stringify({
+            input: query,
+            includedRegionCodes: ["za"],
+          }),
+        });
+        if (!response.ok) throw new Error(`Places error: ${response.status}`);
+        const result = await response.json();
+        if (requestId !== placeRequestId.current) return;
+        setSuggestions(
+          (result.suggestions ?? [])
+            .filter((item: any) => item.placePrediction?.placeId)
+            .map((item: any) => ({
+              placeId: item.placePrediction.placeId as string,
+              description: item.placePrediction.text?.text as string ?? "",
+            }))
+        );
+      } catch (error) {
+        console.error("Location suggestions unavailable:", error);
+        if (requestId === placeRequestId.current) setSuggestions([]);
+      } finally {
+        if (requestId === placeRequestId.current) setLoadingSuggestions(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [meetLocation, selectedPlaceId]);
+
+  const onDateChange = (_event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === "android") setDatePickerMode(null);
+    if (!selected) return;
+    setMeetDate(selected);
+    if (Platform.OS === "android" && datePickerMode === "date") {
+      setTimeout(() => setDatePickerMode("time"), 100);
+    }
+  };
+
+  const isQuestMode =
+    mode === "quest";
+
+  /*
+   * LOAD LOCATION
+   */
   useEffect(() => {
     const loadLocation = async () => {
       try {
@@ -303,34 +511,145 @@ export default function HibernateScreen({
         }
       : undefined;
 
-  const trailsWithDistance =
-    useMemo(() => {
-      if (!userLocation) {
-        return [];
+  // Search after dragging settles. A request limit protects the prototype's
+  // Google Places billing; wide radii provide sampled, not exhaustive, results.
+  useEffect(() => {
+    if (!userLocation || activeTab !== "popular") return;
+    const requestId = ++trailSearchRequest.current;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      if (!PLACES_API_KEY) {
+        setTrailSearchError("Google Places API key is missing. Check your .env file.");
+        setIsLoadingTrails(false);
+        return;
       }
+      setIsLoadingTrails(true);
+      setTrailSearchError("");
+      const { latitude, longitude } = userLocation;
+      const centres = searchCentres(latitude, longitude, travelRadius);
+      // Nearby: three keyword searches. Wider: one keyword per sampled area,
+      // with a sixth search for additional coverage around the user.
+      const tasks = travelRadius <= 50
+        ? TRAIL_SEARCH_TERMS.map((term) => ({ term, centre: centres[0] }))
+        : centres.map((centre, index) => ({
+            term: TRAIL_SEARCH_TERMS[index % TRAIL_SEARCH_TERMS.length], centre,
+          })).concat([{ term: "4x4 adventure park", centre: centres[0] }]);
+      const found = new Map<string, Trail>();
+      let successes = 0;
+      let lastError = "";
+      try {
+        for (const { term, centre } of tasks.slice(0, MAX_SEARCH_REQUESTS)) {
+          if (controller.signal.aborted || requestId !== trailSearchRequest.current) return;
+          const timeout = setTimeout(() => controller.abort(), TRAIL_SEARCH_TIMEOUT_MS);
+          try {
+            const response = await fetch(TRAIL_SEARCH_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": PLACES_API_KEY,
+                "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.formattedAddress,places.types,places.primaryType",
+              },
+              body: JSON.stringify({
+                textQuery: term,
+                languageCode: "en",
+                pageSize: 20,
+                locationBias: {
+                  circle: {
+                    center: { latitude: centre.latitude, longitude: centre.longitude },
+                    radius: Math.min(50000, Math.max(1000, travelRadius * 1000)),
+                  },
+                },
+              }),
+              signal: controller.signal,
+            });
+            if (!response.ok) {
+              const detail = await response.text();
+              throw new Error(`Google Places ${response.status}: ${detail.slice(0, 240)}`);
+            }
+            const data: { places?: GoogleTrailPlace[] } = await response.json();
+            successes++;
+            for (const place of data.places ?? []) {
+              const lat = place.location?.latitude;
+              const lng = place.location?.longitude;
+              if (!place.id || !place.displayName?.text || lat == null || lng == null) continue;
+              if (!isLikelyOffroadDestination(place)) continue;
+              if (calculateDistanceKm(latitude, longitude, lat, lng) > travelRadius) continue;
+              found.set(place.id, {
+                id: place.id,
+                name: place.displayName.text,
+                trailDistance: 0,
+                duration: "Not listed",
+                terrain: "Not verified",
+                difficulty: "Unrated",
+                latitude: lat,
+                longitude: lng,
+              });
+            }
+            // Show successful results progressively, rather than waiting for all searches.
+            if (requestId === trailSearchRequest.current) setDiscoveredTrails([...found.values()]);
+          } catch (error) {
+            if (controller.signal.aborted) {
+              lastError = "Search timed out. Please try again.";
+              break;
+            }
+            lastError = error instanceof Error ? error.message : "Google Places search failed";
+            console.warn("Google Places trail search:", lastError);
+            // Permission / billing errors won't be fixed by retrying other search terms.
+            if (/Google Places (400|401|403)/.test(lastError)) break;
+          } finally {
+            clearTimeout(timeout);
+          }
+        }
+        if (requestId !== trailSearchRequest.current) return;
+        if (!successes) {
+          setTrailSearchError(
+            /Google Places (400|401|403)/.test(lastError)
+              ? "Google Places Text Search is not authorised. Check API enablement, billing and key restrictions."
+              : "Couldn't load destinations right now. Check your connection and try again."
+          );
+          setDiscoveredTrails([]);
+        } else {
+          setTrailSearchError(successes < tasks.length ? "Some areas could not be searched; showing available results." : "");
+        }
+      } finally {
+        if (requestId === trailSearchRequest.current) setIsLoadingTrails(false);
+      }
+    }, 850);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [userLocation?.latitude, userLocation?.longitude, travelRadius, activeTab]);
 
-      return TRAILS.map((trail) => ({
+  // Update the camera whenever the radius changes, including after the map mounts.
+  useEffect(() => {
+    if (!userLocation || activeTab !== "popular") return;
+    const latitudeDelta = Math.min(150, Math.max(0.04, travelRadius * 2.4 / 111));
+    const longitudeDelta = Math.min(160, latitudeDelta / Math.max(0.25, Math.cos(degreesToRadians(userLocation.latitude))));
+    const timer = setTimeout(() => {
+      mapRef.current?.animateToRegion({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta,
+        longitudeDelta,
+      }, 300);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [userLocation?.latitude, userLocation?.longitude, travelRadius, activeTab]);
+
+  const visibleTrails = useMemo(() => {
+    if (!userLocation) return [];
+    return discoveredTrails
+      .map((trail) => ({
         ...trail,
-        distanceFromUser:
-          calculateDistanceKm(
-            userLocation.latitude,
-            userLocation.longitude,
-            trail.latitude,
-            trail.longitude
-          ),
-      })).sort(
-        (a, b) =>
-          a.distanceFromUser -
-          b.distanceFromUser
-      );
-    }, [userLocation]);
-
-  const visibleTrails =
-    trailsWithDistance.filter(
-      (trail) =>
-        trail.distanceFromUser <=
-        travelRadius
-    );
+        distanceFromUser: calculateDistanceKm(
+          userLocation.latitude, userLocation.longitude,
+          trail.latitude, trail.longitude
+        ),
+      }))
+      .filter((trail) => trail.distanceFromUser <= travelRadius)
+      .sort((a, b) => a.distanceFromUser - b.distanceFromUser);
+  }, [discoveredTrails, userLocation, travelRadius]);
 
   const nearbyJimnys =
     useMemo(() => {
@@ -418,10 +737,20 @@ export default function HibernateScreen({
     setTravelRadius(nextRadius);
   };
 
+  /*
+   * SELECT TRAIL
+   *
+   * Only available when Hibernate
+   * was opened from an active quest.
+   */
   const selectTrail = async (
     trail: Trail
   ) => {
-    if (isSelectingTrail) {
+    if (
+      !isQuestMode ||
+      !onTrailSelected ||
+      isSelectingTrail
+    ) {
       return;
     }
 
@@ -459,11 +788,11 @@ export default function HibernateScreen({
   const sendMeetUpInvite = () => {
     if (
       !meetLocation.trim() ||
-      !meetDate.trim()
+      !meetDate || !selectedPlaceId || meetDate.getTime() <= Date.now()
     ) {
       Alert.alert(
         "Missing details",
-        "Add a location and date before sending your Meet & Greet invite."
+        "Select a suggested location and a future date and time before continuing."
       );
 
       return;
@@ -471,11 +800,13 @@ export default function HibernateScreen({
 
     Alert.alert(
       "Meet & Greet ready",
-      "Your Meet & Greet has been created for the prototype."
+      "Your Meet & Greet details are ready in this prototype. No invitations have been sent."
     );
 
     setMeetLocation("");
-    setMeetDate("");
+    setMeetDate(null);
+    setSelectedPlaceId(null);
+    setSuggestions([]);
     setMeetMessage("");
   };
 
@@ -520,10 +851,29 @@ export default function HibernateScreen({
         ref={mapRef}
         style={styles.map}
         initialRegion={mapRegion}
+        onMapReady={() => {
+          if (!userLocation || activeTab !== "popular") return;
+          const latitudeDelta = Math.min(150, Math.max(0.04, travelRadius * 2.4 / 111));
+          mapRef.current?.animateToRegion({
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta,
+            longitudeDelta: Math.min(160, latitudeDelta / Math.max(0.25, Math.cos(degreesToRadians(userLocation.latitude)))),
+          }, 300);
+        }}
         showsUserLocation
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
+        {activeTab === "popular" && userLocation && (
+          <Circle
+            center={userLocation}
+            radius={travelRadius * 1000}
+            strokeColor={colors.green}
+            fillColor="rgba(44, 112, 73, 0.09)"
+            strokeWidth={2}
+          />
+        )}
         {activeTab === "popular"
           ? visibleTrails.map(
               (trail) => (
@@ -574,42 +924,29 @@ export default function HibernateScreen({
             : undefined
         }
       >
+        {/* Fixed header — matches Explore */}
+        <View style={styles.header}>
+          {isQuestMode ? (
+            <Pressable onPress={onBack} hitSlop={10} style={styles.headerIconButton}>
+              <MaterialIcons name="arrow-back" size={27} color={colors.text} />
+            </Pressable>
+          ) : (
+            <View style={styles.headerIconButton} />
+          )}
+          <Text style={styles.headerTitle}>Hibernate</Text>
+          <View style={styles.headerIconButton} />
+        </View>
+
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={
-            styles.scrollContent
-          }
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
         >
           <View style={styles.content}>
-            {/* HEADER */}
-            <View style={styles.header}>
-              <Pressable
-                onPress={onBack}
-                hitSlop={10}
-                style={
-                  styles.backButton
-                }
-              >
-                <MaterialIcons
-                  name="arrow-back"
-                  size={27}
-                  color={colors.text}
-                />
-              </Pressable>
-
-              <Text
-                style={
-                  styles.headerTitle
-                }
-              >
-                Hibernate
-              </Text>
-            </View>
-
             <Text
               style={styles.subtitle}
             >
@@ -729,20 +1066,24 @@ export default function HibernateScreen({
                     </Text>
                   </View>
 
-                  <Pressable
+                  <View
                     style={
                       styles.sliderTouchArea
+                    }
+                    onStartShouldSetResponder={() => true}
+                    onMoveShouldSetResponder={(event) =>
+                      Math.abs(event.nativeEvent.pageX) >= 0
+                    }
+                    onResponderGrant={(event) =>
+                      updateRadiusFromPress(event.nativeEvent.locationX)
+                    }
+                    onResponderMove={(event) =>
+                      updateRadiusFromPress(event.nativeEvent.locationX)
                     }
                     onLayout={(event) =>
                       setSliderWidth(
                         event.nativeEvent
                           .layout.width
-                      )
-                    }
-                    onPress={(event) =>
-                      updateRadiusFromPress(
-                        event.nativeEvent
-                          .locationX
                       )
                     }
                   >
@@ -774,7 +1115,7 @@ export default function HibernateScreen({
                         },
                       ]}
                     />
-                  </Pressable>
+                  </View>
 
                   <View
                     style={
@@ -803,7 +1144,7 @@ export default function HibernateScreen({
                       styles.radiusDescription
                     }
                   >
-                    Showing trails within{" "}
+                    Showing destinations within{" "}
                     {travelRadius.toLocaleString()}{" "}
                     km of your current
                     location.
@@ -815,7 +1156,7 @@ export default function HibernateScreen({
                     styles.sectionHeading
                   }
                 >
-                  POPULAR TRAILS NEAR YOU
+                  4X4 DESTINATIONS NEAR YOU
                 </Text>
 
                 <Text
@@ -823,13 +1164,29 @@ export default function HibernateScreen({
                     styles.sectionDescription
                   }
                 >
-                  Compare difficulty,
-                  distance, duration,
-                  terrain, and distance
-                  from your current
-                  location.
+                  Explore nearby 4x4 destinations and see how far they are from your current location.
                 </Text>
 
+                {!userLocation && !isLoadingLocation && (
+                  <Text style={styles.searchStatusText}>Enable location access to find destinations near you.</Text>
+                )}
+                {isLoadingTrails && (
+                  <View style={styles.searchStatus}>
+                    <ActivityIndicator color={colors.green} />
+                    <Text style={styles.searchStatusText}>Finding 4x4 destinations near you...</Text>
+                  </View>
+                )}
+                {travelRadius > 50 && (
+                  <Text style={styles.searchStatusText}>
+                    Large-area searches show a selection of Google Maps places, not every trail within {travelRadius.toLocaleString()} km.
+                  </Text>
+                )}
+                {!!trailSearchError && (
+                  <Text style={styles.searchStatusText}>{trailSearchError}</Text>
+                )}
+                <Text style={styles.mapAttribution}>
+                  Destinations from Google Maps. Trail access, difficulty and 4x4 suitability are not verified.
+                </Text>
                 <View
                   style={
                     styles.trailList
@@ -847,9 +1204,7 @@ export default function HibernateScreen({
                           styles.emptyText
                         }
                       >
-                        No trails found
-                        within this travel
-                        radius.
+                        {isLoadingTrails ? "Searching for destinations..." : "No 4x4 destinations found in this search area."}
                       </Text>
                     </View>
                   ) : (
@@ -885,20 +1240,6 @@ export default function HibernateScreen({
                                 >
                                   {
                                     trail.name
-                                  }
-                                </Text>
-
-                                <Text
-                                  style={
-                                    styles.trailSummary
-                                  }
-                                >
-                                  {
-                                    trail.trailDistance
-                                  }{" "}
-                                  km •{" "}
-                                  {
-                                    trail.duration
                                   }
                                 </Text>
                               </View>
@@ -943,24 +1284,31 @@ export default function HibernateScreen({
                                 styles.metricsRow
                               }
                             >
-                              <MetricBox
-                                label="Distance"
-                                value={`${trail.trailDistance} km`}
-                              />
+                            <MetricBox
+                            label="Distance"
+                            value={
+                                trailDetails[trail.id]?.trailLengthKm != null
+                                ? `${trailDetails[trail.id].trailLengthKm} km`
+                                : "Not verified"
+                            }
+                            />
 
-                              <MetricBox
-                                label="Duration"
-                                value={
-                                  trail.duration
-                                }
-                              />
+                            <MetricBox
+                            label="Duration"
+                            value={
+                                trailDetails[trail.id]?.estimatedDuration ??
+                                "Not verified"
+                            }
+                            />
 
-                              <MetricBox
-                                label="Terrain"
-                                value={
-                                  trail.terrain
-                                }
-                              />
+                            <MetricBox
+                            label="Terrain"
+                            value={
+                                trailDetails[trail.id]?.terrain?.length
+                                ? trailDetails[trail.id].terrain.join(", ")
+                                : "Not verified"
+                            }
+                            />
                             </View>
 
                             <View
@@ -980,13 +1328,7 @@ export default function HibernateScreen({
                               </Text>
 
                               <Pressable
-                                onPress={() =>
-                                  setExpandedTrail(
-                                    isExpanded
-                                      ? null
-                                      : trail.id
-                                  )
-                                }
+                                onPress={() => { void toggleTrailDetails(trail); }}
                                 style={
                                   styles.detailsButton
                                 }
@@ -1021,49 +1363,100 @@ export default function HibernateScreen({
                                   styles.expandedArea
                                 }
                               >
-                                <Text
-                                  style={
-                                    styles.expandedText
-                                  }
-                                >
-                                  Ready to make{" "}
-                                  {
-                                    trail.name
-                                  }{" "}
-                                  your trail for
-                                  this Side Quest?
-                                </Text>
-
+                                {trailDetailsLoading === trail.id && (
+                                  <ActivityIndicator color={colors.green} style={{marginBottom: 12}} />
+                                )}
+                                {!trailDetails[trail.id] && (
                                 <Pressable
-                                  disabled={
-                                    isSelectingTrail
-                                  }
-                                  onPress={() =>
-                                    selectTrail(
-                                      trail
-                                    )
-                                  }
-                                  style={
-                                    styles.selectTrailButton
-                                  }
+                                    style={{marginBottom: 12}}
+                                    onPress={() => openMapsChooser(trail)}
                                 >
-                                  {isSelectingTrail ? (
-                                    <ActivityIndicator
-                                      color={
-                                        colors.white
-                                      }
-                                    />
-                                  ) : (
+                                    <Text style={styles.detailsText}>Open in Maps ↗</Text>
+                                </Pressable>
+                                )}
+                                {!trailDetails[trail.id] && (
+                                  <Pressable style={{marginBottom: 12}} onPress={() => {
+                                    void openDestinationLink(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trail.name)}&query_place_id=${encodeURIComponent(trail.id)}`);
+                                  }}>
+                                    <Text style={styles.detailsText}>Open in Google Maps ↗</Text>
+                                  </Pressable>
+                                )}
+                                {trailDetails[trail.id] && (
+                                  <View style={{gap: 8, marginBottom: 14}}>
+                                    {trailDetails[trail.id].website ? (
+                                      <Pressable onPress={() => { void openDestinationLink(trailDetails[trail.id].website!); }}>
+                                        <Text style={styles.detailsText}>Visit destination website ↗</Text>
+                                      </Pressable>
+                                    ) : (
+                                      <Text style={styles.expandedText}>Destination website: Not listed</Text>
+                                    )}
+                                    <Pressable onPress={() => openMapsChooser(trail)}>
+                                    <Text style={styles.detailsText}>
+                                        Open in Maps ↗
+                                    </Text>
+                                    </Pressable>
+                                    {!!trailDetails[trail.id].sourceUrl && (
+                                      <Pressable onPress={() => openMapsChooser(trail)}>
+                                        <Text style={styles.detailsText}>View trail information source ↗</Text>
+                                      </Pressable>
+                                    )}
+                                  </View>
+                                )}
+                                {isQuestMode ? (
+                                  <>
                                     <Text
                                       style={
-                                        styles.selectTrailButtonText
+                                        styles.expandedText
                                       }
                                     >
-                                      SELECT THIS
-                                      TRAIL
+                                      Ready to make{" "}
+                                      {
+                                        trail.name
+                                      }{" "}
+                                      your trail for
+                                      this Side Quest?
                                     </Text>
-                                  )}
-                                </Pressable>
+
+                                    <Pressable
+                                      disabled={
+                                        isSelectingTrail
+                                      }
+                                      onPress={() =>
+                                        selectTrail(
+                                          trail
+                                        )
+                                      }
+                                      style={
+                                        styles.selectTrailButton
+                                      }
+                                    >
+                                      {isSelectingTrail ? (
+                                        <ActivityIndicator
+                                          color={
+                                            colors.white
+                                          }
+                                        />
+                                      ) : (
+                                        <Text
+                                          style={
+                                            styles.selectTrailButtonText
+                                          }
+                                        >
+                                          SELECT THIS
+                                          TRAIL
+                                        </Text>
+                                      )}
+                                    </Pressable>
+                                  </>
+                                ) : (
+                                  <Text
+                                    style={
+                                      styles.expandedText
+                                    }
+                                  >
+                                    {trail.name} is a Google Maps destination. Check access, opening times and 4x4 suitability before visiting.
+                                  </Text>
+                                )}
                               </View>
                             )}
                           </View>
@@ -1179,23 +1572,89 @@ export default function HibernateScreen({
 
               <TextInput
                 value={meetLocation}
-                onChangeText={
-                  setMeetLocation
-                }
-                placeholder="Enter location (e.g. Pretoria Dirt Track)"
+                onChangeText={(value) => {
+                  setMeetLocation(value);
+                  setSelectedPlaceId(null);
+                }}
+                placeholder="Search for a meeting location"
                 placeholderTextColor="#A7ADBA"
                 style={styles.input}
+                autoCorrect={false}
               />
+              {loadingSuggestions ? (
+                <ActivityIndicator color={colors.green} style={styles.suggestionLoading} />
+              ) : null}
+              {suggestions.length > 0 ? (
+                <View style={styles.suggestionsBox}>
+                  {suggestions.map((place) => (
+                    <Pressable
+                      key={place.placeId}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        setMeetLocation(place.description);
+                        setSelectedPlaceId(place.placeId);
+                        setSuggestions([]);
+                      }}
+                    >
+                      <MaterialIcons name="place" size={19} color={colors.green} />
+                      <Text style={styles.suggestionText}>{place.description}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {!PLACES_API_KEY ? (
+                <Text style={styles.inputHint}>
+                  Add EXPO_PUBLIC_GOOGLE_PLACES_API_KEY to your .env to enable address suggestions.
+                </Text>
+              ) : null}
 
-              <TextInput
-                value={meetDate}
-                onChangeText={
-                  setMeetDate
-                }
-                placeholder="Select date and time"
-                placeholderTextColor="#A7ADBA"
-                style={styles.input}
-              />
+              <Pressable
+                onPress={() => setDatePickerMode("date")}
+                style={[styles.input, styles.dateButton]}
+              >
+                <Text style={[styles.dateButtonText, !meetDate && styles.placeholderText]}>
+                  {meetDate
+                    ? meetDate.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })
+                    : "Select date"}
+                </Text>
+                <MaterialIcons name="event" size={21} color={colors.green} />
+              </Pressable>
+              <Pressable
+                onPress={() => setDatePickerMode("time")}
+                style={[styles.input, styles.dateButton]}
+              >
+                <Text style={[styles.dateButtonText, !meetDate && styles.placeholderText]}>
+                  {meetDate
+                    ? meetDate.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false })
+                    : "Select time"}
+                </Text>
+                <MaterialIcons name="schedule" size={21} color={colors.green} />
+              </Pressable>
+              {datePickerMode && Platform.OS === "ios" ? (
+                <Modal transparent animationType="fade" visible onRequestClose={() => setDatePickerMode(null)}>
+                  <View style={styles.pickerOverlay}>
+                    <View style={styles.pickerPanel}>
+                      <Pressable onPress={() => setDatePickerMode(null)} style={styles.pickerDone}>
+                        <Text style={styles.pickerDoneText}>Done</Text>
+                      </Pressable>
+                      <DateTimePicker
+                        value={meetDate ?? new Date()}
+                        mode={datePickerMode}
+                        display="spinner"
+                        minimumDate={datePickerMode === "date" ? new Date() : undefined}
+                        onChange={onDateChange}
+                      />
+                    </View>
+                  </View>
+                </Modal>
+              ) : datePickerMode ? (
+                <DateTimePicker
+                  value={meetDate ?? new Date()}
+                  mode={datePickerMode}
+                  minimumDate={datePickerMode === "date" ? new Date() : undefined}
+                  onChange={onDateChange}
+                />
+              ) : null}
 
               <TextInput
                 value={meetMessage}
@@ -1232,8 +1691,7 @@ export default function HibernateScreen({
               <Text
                 style={styles.meetNote}
               >
-                Nearby Jimny owners will
-                be notified.
+                Prototype preview only — invitations are not sent yet.
               </Text>
             </View>
           </View>
@@ -1244,7 +1702,8 @@ export default function HibernateScreen({
           <Pressable
             style={[
               styles.navItem,
-              styles.navItemSelected,
+              !isQuestMode &&
+                false,
             ]}
             onPress={onExplore}
           >
@@ -1255,17 +1714,18 @@ export default function HibernateScreen({
             />
 
             <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
+              style={styles.navText}
             >
               Explore
             </Text>
           </Pressable>
 
           <Pressable
-            style={styles.navItem}
+            style={[
+              styles.navItem,
+              !isQuestMode &&
+                styles.navItemSelected,
+            ]}
             onPress={onAdventures}
           >
             <MaterialIcons
@@ -1275,7 +1735,11 @@ export default function HibernateScreen({
             />
 
             <Text
-              style={styles.navText}
+              style={[
+                styles.navText,
+                !isQuestMode &&
+                  styles.navTextSelected,
+              ]}
             >
               Adventures
             </Text>
@@ -1300,6 +1764,7 @@ export default function HibernateScreen({
 
           <Pressable
             style={styles.navItem}
+            onPress={onProfile}
           >
             <MaterialIcons
               name="account-circle"
@@ -1360,7 +1825,7 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingBottom: 30,
+    paddingBottom: 26,
   },
 
   content: {
@@ -1368,33 +1833,41 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: "center",
     paddingHorizontal: 20,
-    paddingTop: 17,
+    paddingTop: 12,
   },
 
   header: {
+    minHeight: 92,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
   },
 
-  backButton: {
-    width: 30,
-    minHeight: 38,
+  headerIconButton: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
     justifyContent: "center",
   },
 
   headerTitle: {
-    marginLeft: 2,
+    flex: 1,
+    paddingHorizontal: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 30,
-    lineHeight: 36,
-    color: colors.text,
+    fontSize: 16,
+    lineHeight: 23,
+    textAlign: "center",
+    color: colors.red,
   },
 
   subtitle: {
     marginTop: 4,
     fontFamily: fonts.regular,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.textSecondary,
   },
 
@@ -1475,7 +1948,7 @@ const styles = StyleSheet.create({
 
   tabText: {
     fontFamily: fonts.medium,
-    fontSize: 15,
+    fontSize: 12,
     textAlign: "center",
     color: colors.textSecondary,
   },
@@ -1573,7 +2046,8 @@ const styles = StyleSheet.create({
   sectionHeading: {
     marginTop: 19,
     fontFamily: fonts.extraBold,
-    fontSize: 15,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.red,
   },
 
@@ -1585,6 +2059,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
+  searchStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+  searchStatusText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  mapAttribution: {
+    marginTop: 10,
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textSecondary,
+  },
   trailList: {
     width: "100%",
     marginTop: 15,
@@ -1613,8 +2106,8 @@ const styles = StyleSheet.create({
 
   trailTitle: {
     fontFamily: fonts.extraBold,
-    fontSize: 17,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.text,
   },
 
@@ -1807,15 +2300,16 @@ const styles = StyleSheet.create({
 
   ownerName: {
     fontFamily: fonts.extraBold,
-    fontSize: 18,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.text,
   },
 
   ownerDetails: {
     marginTop: 3,
     fontFamily: fonts.regular,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     color: colors.textSecondary,
   },
 
@@ -1828,148 +2322,182 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1.5,
     borderColor: colors.orange,
-    borderRadius: 7,
+        borderRadius: 8,
     backgroundColor: colors.background,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.17,
-    shadowRadius: 4,
-    elevation: 3,
   },
 
   waveButtonActive: {
-    backgroundColor: "#FFF0DE",
+    backgroundColor: colors.orange,
   },
 
   waveButtonText: {
     fontFamily: fonts.extraBold,
-    fontSize: 14,
+    fontSize: 12,
     color: colors.text,
   },
 
   meetCard: {
     width: "100%",
     marginTop: 28,
-    paddingHorizontal: 19,
-    paddingTop: 22,
-    paddingBottom: 21,
+    padding: 16,
     borderWidth: 1.5,
     borderColor: colors.green,
-    borderRadius: 9,
+    borderRadius: 8,
   },
 
   meetTitle: {
-    marginBottom: 18,
     fontFamily: fonts.extraBold,
-    fontSize: 21,
-    lineHeight: 26,
+    fontSize: 16,
     color: colors.text,
+    marginBottom: 15,
   },
 
   input: {
     width: "100%",
-    minHeight: 54,
-    marginBottom: 13,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    borderWidth: 1.5,
-    borderColor: colors.orange,
-    borderRadius: 5,
-    backgroundColor: colors.background,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
     fontFamily: fonts.regular,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.text,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    elevation: 2,
+    backgroundColor: colors.background,
   },
 
   messageInput: {
-    minHeight: 86,
+    minHeight: 95,
+    paddingTop: 12,
   },
 
   sendButton: {
-    width: "100%",
-    minHeight: 57,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 1,
-    borderRadius: 4,
+    borderRadius: 8,
     backgroundColor: colors.green,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.16,
-    shadowRadius: 4,
-    elevation: 3,
+    marginTop: 5,
   },
 
   sendButtonText: {
     fontFamily: fonts.extraBold,
-    fontSize: 15,
+    fontSize: 13,
     color: colors.white,
   },
 
   meetNote: {
-    marginTop: 17,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: 12,
+  },
+
+  suggestionLoading: {
+    marginBottom: 10,
+  },
+
+  suggestionsBox: {
+    borderWidth: 1,
+    borderColor: colors.green,
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+  },
+
+  suggestionText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.text,
+  },
+
+  inputHint: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 10,
+  },
+
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  dateButtonText: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    textAlign: "center",
-    color: colors.textSecondary,
+    color: colors.text,
+  },
+
+  placeholderText: {
+    color: "#A7ADBA",
+  },
+
+  pickerOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    paddingHorizontal: 24,
+  },
+
+  pickerPanel: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+  },
+
+  pickerDone: {
+    alignSelf: "flex-end",
+    padding: 10,
+  },
+
+  pickerDoneText: {
+    fontFamily: fonts.extraBold,
+    fontSize: 14,
+    color: colors.green,
   },
 
   bottomNav: {
-    minHeight: 86,
     flexDirection: "row",
-    alignItems: "stretch",
-    borderTopWidth:
-      StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.divider,
     backgroundColor: colors.background,
-    paddingHorizontal: 15,
-    paddingTop: 8,
-    paddingBottom: 5,
+    paddingVertical: 10,
   },
 
   navItem: {
     flex: 1,
-    minWidth: 0,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    borderRadius: 3,
+    paddingVertical: 5,
   },
 
   navItemSelected: {
-    backgroundColor: colors.orange,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
+    borderTopWidth: 2,
+    borderTopColor: colors.green,
   },
 
   navText: {
+    marginTop: 4,
     fontFamily: fonts.medium,
-    fontSize: 11,
-    color: colors.text,
-    textAlign: "center",
+    fontSize: 10,
+    color: colors.textSecondary,
   },
 
   navTextSelected: {
     fontFamily: fonts.extraBold,
+    color: colors.green,
   },
 });

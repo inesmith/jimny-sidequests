@@ -340,11 +340,6 @@ export default function HomeScreen({
                   </Text>
                 </View>
 
-                <MaterialIcons
-                  name="event"
-                  size={27}
-                  color={colors.orange}
-                />
               </View>
 
               <Pressable
@@ -490,7 +485,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 23,
     textAlign: "center",
     color: colors.red,
@@ -556,7 +551,7 @@ const styles = StyleSheet.create({
 
   filterText: {
     fontFamily: fonts.medium,
-    fontSize: 14,
+    fontSize: 12,
     color: colors.text,
   },
 
@@ -579,7 +574,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 17,
     color: colors.red,
   },
@@ -627,7 +622,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 19,
+    fontSize: 16,
     lineHeight: 23,
     color: colors.text,
   },
@@ -705,7 +700,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 7,
     fontFamily: fonts.extraBold,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 18,
     color: colors.text,
   },
@@ -843,7 +838,7 @@ const styles = StyleSheet.create({
 
   upcomingButtonTitle: {
     fontFamily: fonts.extraBold,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 18,
     color: colors.text,
   },
