@@ -635,7 +635,7 @@ export default function CreatePassportScreen({
             >
               <MaterialIcons
                 name="arrow-back"
-                size={20}
+                size={22}
                 color={
                   colors.text
                 }
@@ -1390,7 +1390,7 @@ const styles =
     },
 
     header: {
-      height: 58,
+      minHeight: 92,
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal:
@@ -1408,10 +1408,10 @@ const styles =
     },
 
     backText: {
-      marginLeft: 4,
+      marginLeft: 5,
       fontFamily:
         fonts.regular,
-      fontSize: 14,
+      fontSize: 16,
       color: colors.text,
     },
 
@@ -1419,7 +1419,8 @@ const styles =
       flex: 1,
       fontFamily:
         fonts.extraBold,
-      fontSize: 15,
+      fontSize: 16,
+      lineHeight: 23,
       color: colors.red,
       textAlign: "center",
     },
@@ -1509,8 +1510,8 @@ const styles =
     sectionTitle: {
       fontFamily:
         fonts.extraBold,
-      fontSize: 11,
-      lineHeight: 15,
+      fontSize: 12,
+      lineHeight: 16,
       color: colors.red,
       marginBottom: 15,
     },

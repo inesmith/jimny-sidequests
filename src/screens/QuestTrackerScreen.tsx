@@ -818,7 +818,7 @@ export default function QuestTrackerScreen({
           >
             <MaterialIcons
               name="more-horiz"
-              size={29}
+              size={26}
               color={colors.text}
             />
           </Pressable>
@@ -1293,7 +1293,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    minHeight: 96,
+    minHeight: 92,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
@@ -1312,8 +1312,8 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontFamily: fonts.extraBold,
-    fontSize: 19,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 23,
     textAlign: "center",
     color: colors.red,
   },
@@ -1343,8 +1343,8 @@ const styles = StyleSheet.create({
 
   activeQuestLabel: {
     fontFamily: fonts.extraBold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.red,
   },
 
@@ -1399,8 +1399,8 @@ const styles = StyleSheet.create({
     marginTop: 27,
     marginBottom: 16,
     fontFamily: fonts.extraBold,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.red,
   },
 

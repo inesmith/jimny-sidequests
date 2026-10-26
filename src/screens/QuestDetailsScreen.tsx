@@ -107,7 +107,7 @@ export default function QuestDetailsScreen({
           >
             <MaterialIcons
               name="arrow-back"
-              size={27}
+              size={22}
               color={colors.text}
             />
 
@@ -126,7 +126,7 @@ export default function QuestDetailsScreen({
           >
             <MaterialIcons
               name="more-horiz"
-              size={29}
+              size={26}
               color={colors.text}
             />
           </Pressable>
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    minHeight: 96,
+    minHeight: 92,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 100,
+    width: 90,
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
@@ -294,21 +294,21 @@ const styles = StyleSheet.create({
 
   backText: {
     fontFamily: fonts.regular,
-    fontSize: 17,
+    fontSize: 16,
     color: colors.text,
   },
 
   headerTitle: {
     flex: 1,
     fontFamily: fonts.extraBold,
-    fontSize: 19,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 23,
     textAlign: "center",
     color: colors.red,
   },
 
   menuButton: {
-    width: 100,
+    width: 90,
     minHeight: 44,
     alignItems: "flex-end",
     justifyContent: "center",
@@ -433,8 +433,8 @@ const styles = StyleSheet.create({
     marginTop: 21,
     marginBottom: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.red,
   },
 

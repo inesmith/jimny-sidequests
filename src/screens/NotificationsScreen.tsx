@@ -93,7 +93,7 @@ export default function NotificationsScreen({
           >
             <MaterialIcons
               name="arrow-back"
-              size={25}
+              size={22}
               color={colors.text}
             />
 
@@ -400,15 +400,15 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 105,
+    width: 90,
     height: 44,
     flexDirection: "row",
     alignItems: "center",
   },
 
   backText: {
-    marginLeft: 6,
-    fontFamily: fonts.medium,
+    marginLeft: 5,
+    fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.text,
   },
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   },
 
   headerSpacer: {
-    width: 105,
+    width: 90,
   },
 
   scrollView: {

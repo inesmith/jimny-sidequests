@@ -1077,7 +1077,7 @@ export default function UpcomingExperiencesScreen({
             >
               <MaterialIcons
                 name="arrow-back"
-                size={25}
+                size={22}
                 color={
                   colors.text
                 }
@@ -1108,7 +1108,7 @@ export default function UpcomingExperiencesScreen({
             >
               <MaterialIcons
                 name="more-horiz"
-                size={28}
+                size={26}
                 color={
                   colors.text
                 }
@@ -2159,7 +2159,7 @@ const styles =
     backText: {
       marginLeft: 6,
       fontFamily:
-        fonts.medium,
+        fonts.regular,
       fontSize: 16,
       color: colors.text,
     },
@@ -2169,7 +2169,7 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.extraBold,
-      fontSize: 18,
+      fontSize: 16,
       lineHeight: 23,
       color: colors.red,
     },

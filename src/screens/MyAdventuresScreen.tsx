@@ -357,7 +357,7 @@ export default function MyAdventuresScreen({
           >
             <MaterialIcons
               name="arrow-back"
-              size={26}
+              size={22}
               color={colors.text}
             />
 
@@ -380,7 +380,7 @@ export default function MyAdventuresScreen({
           >
             <MaterialIcons
               name="more-horiz"
-              size={28}
+              size={26}
               color={colors.text}
             />
           </Pressable>
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
 
   backText: {
     marginLeft: 6,
-    fontFamily: fonts.medium,
+    fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.text,
   },

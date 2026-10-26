@@ -747,7 +747,7 @@ const styles =
      */
 
     header: {
-      height: 72,
+      minHeight: 92,
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 18,
@@ -788,7 +788,8 @@ const styles =
       fontFamily:
         fonts.extraBold,
 
-      fontSize: 20,
+      fontSize: 16,
+      lineHeight: 23,
 
       color: colors.red,
     },
@@ -901,8 +902,8 @@ const styles =
       fontFamily:
         fonts.extraBold,
 
-      fontSize: 14,
-      lineHeight: 18,
+      fontSize: 12,
+      lineHeight: 17,
 
       color: colors.red,
     },

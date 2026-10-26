@@ -487,7 +487,7 @@ export default function ExperienceDetailsScreen({
             >
               <MaterialIcons
                 name="arrow-back"
-                size={25}
+                size={22}
                 color={colors.text}
               />
 
@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
 
   backText: {
     marginLeft: 6,
-    fontFamily: fonts.medium,
+    fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.text,
   },
@@ -1009,7 +1009,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
     fontFamily: fonts.extraBold,
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 23,
     color: colors.red,
   },
