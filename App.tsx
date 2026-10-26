@@ -22,7 +22,10 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import {
+  collection,
   doc,
+  getDocs,
+  runTransaction,
   getDoc,
   serverTimestamp,
   setDoc,
@@ -77,6 +80,7 @@ import {
 } from "./src/firebase/firebase";
 
 import { colors } from "./src/theme/theme";
+import { quests } from "./src/data/quests";
 
 type Screen =
   | "login"
@@ -203,6 +207,59 @@ export default function App() {
     isOpeningNotification,
     setIsOpeningNotification,
   ] = useState(false);
+
+  const [monthlyQuests, setMonthlyQuests] = useState<Quest[]>([]);
+  const [isLoadingMonthlyQuests, setIsLoadingMonthlyQuests] = useState(true);
+
+  // Each user receives a stable, Firestore-backed selection per calendar month.
+  // Completed quests are filtered out immediately and never reselected.
+  useEffect(() => {
+    if (screen !== "home") return;
+    const user = auth.currentUser;
+    if (!user) {
+      setMonthlyQuests([]);
+      setIsLoadingMonthlyQuests(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingMonthlyQuests(true);
+    const load = async () => {
+      try {
+        const now = new Date();
+        const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const progress = await getDocs(collection(db, "users", user.uid, "quests"));
+        const completed = new Set<string>();
+        progress.forEach((item) => {
+          if (item.data().status === "completed") completed.add(item.id);
+        });
+        const selectionRef = doc(db, "users", user.uid, "monthlyQuestSelections", month);
+        const ids = await runTransaction(db, async (transaction) => {
+          const existing = await transaction.get(selectionRef);
+          if (existing.exists()) {
+            const saved = existing.data().questIds;
+            return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : [];
+          }
+          const eligible = quests.filter((quest) => !completed.has(quest.id));
+          const shuffled = [...eligible];
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          }
+          const selected = shuffled.slice(0, 2).map((quest) => quest.id);
+          transaction.set(selectionRef, { questIds: selected, month, createdAt: serverTimestamp() });
+          return selected;
+        });
+        if (!cancelled) setMonthlyQuests(ids.filter((id) => !completed.has(id)).map((id) => quests.find((quest) => quest.id === id)).filter((quest): quest is Quest => Boolean(quest)));
+      } catch (error) {
+        console.error("Unable to load monthly quests:", error);
+        if (!cancelled) setMonthlyQuests([]);
+      } finally {
+        if (!cancelled) setIsLoadingMonthlyQuests(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [screen]);
 
   const [fontsLoaded] =
     useFonts({
@@ -1091,6 +1148,7 @@ export default function App() {
       setSelectedQuestProgress(
         completedProgress
       );
+      setMonthlyQuests((current) => current.filter((quest) => quest.id !== completedProgress.questId));
 
       setScreen(
         "questCompletion"
@@ -1184,6 +1242,8 @@ export default function App() {
     ) {
       return (
         <HomeScreen
+          availableQuests={monthlyQuests}
+          isLoadingMonthlyQuests={isLoadingMonthlyQuests}
           onPassport={
             openPassport
           }

@@ -3,8 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  LayoutChangeEvent,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -100,6 +100,23 @@ export default function MyProfileScreen({
   onEditProfile,
   onSignOut,
 }: MyProfileScreenProps) {
+  // Fit the entire profile between the fixed header and bottom navigation.
+  // Content remains non-scrollable even on shorter phone screens.
+  const [availableHeight, setAvailableHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const contentScale =
+    availableHeight > 0 && contentHeight > 0
+      ? Math.min(1, availableHeight / contentHeight)
+      : 1;
+
+  const handleAvailableLayout = (event: LayoutChangeEvent) => {
+    setAvailableHeight(event.nativeEvent.layout.height);
+  };
+
+  const handleContentLayout = (event: LayoutChangeEvent) => {
+    setContentHeight(event.nativeEvent.layout.height);
+  };
+
   const [
     profile,
     setProfile,
@@ -614,21 +631,16 @@ export default function MyProfileScreen({
           </Pressable>
         </View>
 
-        <ScrollView
-          style={
-            styles.scrollView
-          }
-          contentContainerStyle={
-            styles.scrollContent
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
-        >
+        <View style={styles.scrollView} onLayout={handleAvailableLayout}>
           <View
-            style={
-              styles.content
-            }
+            onLayout={handleContentLayout}
+            style={[
+              styles.content,
+              {
+                transform: [{ scale: contentScale }],
+                transformOrigin: "top center",
+              },
+            ]}
           >
             {/* PROFILE PHOTO */}
             <View
@@ -917,7 +929,7 @@ export default function MyProfileScreen({
               </>
             )}
           </View>
-        </ScrollView>
+        </View>
 
         {/* SHARED BOTTOM NAVIGATION */}
         <BottomNav
@@ -1172,6 +1184,7 @@ const styles =
 
     scrollView: {
       flex: 1,
+      overflow: "hidden",
     },
 
     scrollContent: {

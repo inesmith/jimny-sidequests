@@ -41,6 +41,7 @@ type HomeScreenProps = {
 
   onNotifications?: () => void;
   notificationCount?: number;
+  availableQuests?: Quest[];
 };
 
 const categories = [
@@ -110,7 +111,15 @@ function QuestCard({
       ]}
       onPress={() => onPress?.(quest)}
     >
-      <ImagePlaceholder style={styles.questImage} />
+      {quest.image || (quest.id === "get-it-dirty" || quest.title.trim().toLowerCase() === "get it dirty") ? (
+        <Image
+          source={quest.image ?? require("../../assets/images/getItDirty.jpg")}
+          style={styles.questImage}
+          resizeMode={quest.id === "get-it-dirty" || quest.title.trim().toLowerCase() === "get it dirty" ? "contain" : "cover"}
+        />
+      ) : (
+        <ImagePlaceholder style={styles.questImage} />
+      )}
 
       <View style={styles.questContent}>
         <View style={styles.questTitleRow}>
@@ -150,13 +159,14 @@ export default function HomeScreen({
   onUpcomingExperiences,
   onNotifications,
   notificationCount = 0,
+  availableQuests = [],
 }: HomeScreenProps) {
   const [selectedCategory, setSelectedCategory] =
     useState("All");
   const filteredQuests =
     selectedCategory === "All"
-      ? quests
-      : quests.filter(
+      ? availableQuests
+      : availableQuests.filter(
           (quest) =>
             quest.category === selectedCategory
         );
@@ -273,10 +283,19 @@ export default function HomeScreen({
                   onQuestPress?.(featuredQuest)
                 }
               >
-                <ImagePlaceholder
-                  label="FEATURED QUEST IMAGE"
-                  style={styles.featuredImage}
-                />
+                {featuredQuest.image ||
+                (featuredQuest.id === "get-it-dirty" || featuredQuest.title.trim().toLowerCase() === "get it dirty") ? (
+                  <Image
+                    source={featuredQuest.image ?? require("../../assets/images/getItDirty.jpg")}
+                    style={styles.featuredImage}
+                    resizeMode={featuredQuest.id === "get-it-dirty" || featuredQuest.title.trim().toLowerCase() === "get it dirty" ? "contain" : "cover"}
+                  />
+                ) : (
+                  <ImagePlaceholder
+                    label="FEATURED QUEST IMAGE"
+                    style={styles.featuredImage}
+                  />
+                )}
 
                 <View style={styles.featuredContent}>
                   <View style={styles.featuredTitleRow}>
@@ -542,7 +561,7 @@ const styles = StyleSheet.create({
 
   featuredImage: {
     width: "100%",
-    aspectRatio: 1.9,
+    height: 259,
   },
 
   featuredContent: {
@@ -554,11 +573,13 @@ const styles = StyleSheet.create({
   featuredTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     marginBottom: 8,
   },
 
   featuredTitle: {
     flex: 1,
+    minWidth: 0,
     paddingRight: 10,
     fontFamily: fonts.extraBold,
     fontSize: 16,
@@ -627,16 +648,19 @@ const styles = StyleSheet.create({
 
   questContent: {
     flex: 1,
+    minWidth: 0,
     marginLeft: 13,
   },
 
   questTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
   },
 
   questTitle: {
     flex: 1,
+    minWidth: 0,
     paddingRight: 7,
     fontFamily: fonts.extraBold,
     fontSize: 13,

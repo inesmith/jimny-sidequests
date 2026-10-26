@@ -1,107 +1,24 @@
 import type { Quest } from "../screens/HomeScreen";
 
 export const featuredQuest: Quest = {
-  id: "get-it-dirty",
-  title: "Get It Dirty",
-  category: "Off-Road",
-  duration: "Half Day",
-  difficulty: 3,
-  difficultyLabel: "Moderate",
-  description:
-    "Complete an off-road trail and earn your dirt badge. Show that your Jimny belongs in the wild!",
-  requirements:
-    "Your Jimny, sense of adventure, camera",
-  steps: [
-    "Find an off-road trail in South Africa",
-    "Drive the trail in your Jimny",
-    "Take a photo of your vehicle on the trail as proof",
-  ],
-  stampTitle: "The Dirt Badge",
+  id: "get-it-dirty", title: "Get It Dirty", category: "Off-Road", duration: "Half Day",
+  difficulty: 3, difficultyLabel: "Moderate",
+  description: "Complete an off-road trail and earn your dirt badge. Show that your Jimny belongs in the wild!",
+  requirements: "Your Jimny, sense of adventure, camera",
+  steps: ["Find an off-road trail in South Africa", "Drive the trail in your Jimny", "Take a photo of your vehicle on the trail as proof"],
+  stampTitle: "The Dirt Badge", image: require("../../assets/images/getItDirty.jpg"),
 };
 
 export const quests: Quest[] = [
-  {
-    id: "convoy-and-coffee",
-    title: "Convoy & Coffee",
-    category: "Community",
-    duration: "2 Hours",
-    difficulty: 1,
-    difficultyLabel: "Easy",
-    description:
-      "Meet up with fellow Jimny owners, hit the road together and finish the adventure with a coffee stop.",
-    requirements:
-      "Your Jimny, a fellow Jimny owner, camera",
-    steps: [
-      "Plan or join a small Jimny convoy",
-      "Drive together to a coffee stop",
-      "Take a photo of the Jimnys together",
-      "Submit the photo to claim your stamp",
-    ],
-    stampTitle: "The Convoy Badge",
-  },
-  {
-    id: "sleep-under-the-stars",
-    title: "Sleep Under the Stars",
-    category: "Camping",
-    duration: "1 Night",
-    difficulty: 3,
-    difficultyLabel: "Moderate",
-    description:
-      "Pack your Jimny, head outdoors and spend a night camping under the stars.",
-    requirements:
-      "Your Jimny, camping gear, camera",
-    steps: [
-      "Choose a camping destination",
-      "Pack your Jimny and travel there",
-      "Spend the night camping",
-      "Submit a photo to claim your stamp",
-    ],
-    stampTitle: "The Camping Badge",
-  },
-  {
-    id: "find-your-twin",
-    title: "Find Your Twin",
-    category: "Quick Quest",
-    duration: "30 Mins",
-    difficulty: 1,
-    difficultyLabel: "Easy",
-    description:
-      "Find another Jimny that matches yours and capture the perfect twin photo.",
-    requirements:
-      "Your Jimny, another matching Jimny, camera",
-    steps: [
-      "Keep an eye out for a matching Jimny",
-      "Park your Jimnys together",
-      "Take a twin photo",
-      "Submit the photo to claim your stamp",
-    ],
-    stampTitle: "The Twin Badge",
-  },
-  {
-    id: "road-less-travelled",
-    title: "Road Less Travelled",
-    category: "Road Trip",
-    duration: "1 Day",
-    difficulty: 2,
-    difficultyLabel: "Easy",
-    description:
-      "Leave the familiar route behind and take your Jimny somewhere you have never explored before.",
-    requirements:
-      "Your Jimny, a destination, camera",
-    steps: [
-      "Choose a road or destination you have not explored",
-      "Take your Jimny on the adventure",
-      "Stop somewhere memorable",
-      "Submit a photo to claim your stamp",
-    ],
-    stampTitle: "The Explorer Badge",
-  },
+  { id: "convoy-and-coffee", title: "Convoy & Coffee", category: "Community", duration: "2 Hours", difficulty: 1, difficultyLabel: "Easy", description: "Meet up with fellow Jimny owners, hit the road together and finish the adventure with a coffee stop.", requirements: "Your Jimny, a fellow Jimny owner, camera", steps: ["Plan or join a small Jimny convoy", "Drive together to a coffee stop", "Take a photo of the Jimnys together", "Submit the photo to claim your stamp"], stampTitle: "The Convoy Badge", image: require("../../assets/images/convoyAndCoffee.jpg"), },
+  { id: "sleep-under-the-stars", title: "Sleep Under the Stars", category: "Camping", duration: "1 Night", difficulty: 3, difficultyLabel: "Moderate", description: "Pack your Jimny, head outdoors and spend a night camping under the stars.", requirements: "Your Jimny, camping gear, camera", steps: ["Choose a camping destination", "Pack your Jimny and travel there", "Spend the night camping", "Submit a photo to claim your stamp"], stampTitle: "The Camping Badge", image: require("../../assets/images/sleepUnderTheStars.jpg") },
+  { id: "find-your-twin", title: "Find Your Twin", category: "Quick Quest", duration: "30 Mins", difficulty: 1, difficultyLabel: "Easy", description: "Find another Jimny that matches yours and capture the perfect twin photo.", requirements: "Your Jimny, another matching Jimny, camera", steps: ["Keep an eye out for a matching Jimny", "Park your Jimnys together", "Take a twin photo", "Submit the photo to claim your stamp"], stampTitle: "The Twin Badge", image: require("../../assets/images/findYourTwin.jpg") },
+  { id: "road-less-travelled", title: "Road Less Travelled", category: "Road Trip", duration: "1 Day", difficulty: 2, difficultyLabel: "Easy", description: "Leave the familiar route behind and take your Jimny somewhere you have never explored before.", requirements: "Your Jimny, a destination, camera", steps: ["Choose a road or destination you have not explored", "Take your Jimny on the adventure", "Stop somewhere memorable", "Submit a photo to claim your stamp"], stampTitle: "The Explorer Badge", image: require("../../assets/images/roadLessTraveled.jpg") },
+  { id: "watch-the-sunset", title: "Watch the Sunset", category: "Road Trip", duration: "2 Hours", difficulty: 1, difficultyLabel: "Easy", description: "Take your Jimny somewhere scenic and enjoy the last light of the day.", requirements: "Your Jimny, a safe sunset viewpoint, camera", steps: ["Choose a safe spot with a sunset view", "Drive there in your Jimny before sunset", "Take a photo of your Jimny at sunset", "Submit your photo to claim your stamp"], stampTitle: "The Sunset Badge", image: require("../../assets/images/watchTheSunset.jpg") },
+  { id: "watch-the-sunrise", title: "Watch the Sunrise", category: "Road Trip", duration: "2 Hours", difficulty: 1, difficultyLabel: "Easy", description: "Start your day with an early Jimny adventure and watch the sun rise.", requirements: "Your Jimny, a safe sunrise viewpoint, camera", steps: ["Choose a safe spot with a sunrise view", "Set off early enough to arrive before sunrise", "Take a photo of your Jimny at sunrise", "Submit your photo to claim your stamp"], stampTitle: "The Sunrise Badge", image: require("../../assets/images/watchTheSunrise.jpg") },
+  { id: "start-a-meet-and-greet", title: "Start a Meet & Greet", category: "Community", duration: "2 Hours", difficulty: 2, difficultyLabel: "Easy", description: "Bring local Jimny owners together and make some new friends.", requirements: "Your Jimny, fellow Jimny owners, a meeting place, camera", steps: ["Choose a safe meeting place and invite other Jimny owners", "Meet up and get to know each other", "Take a group photo of the Jimnys", "Submit your photo to claim your stamp"], stampTitle: "The Meet & Greet Badge", image: require("../../assets/images/startAMeet&Greet.jpg") },
+  { id: "create-a-convoy", title: "Create a Convoy", category: "Community", duration: "Half Day", difficulty: 2, difficultyLabel: "Easy", description: "Organise a Jimny convoy and enjoy the road together.", requirements: "Your Jimny, other Jimny owners, a planned route, camera", steps: ["Plan a safe convoy route and invite other Jimny owners", "Agree on a meeting point and drive together", "Take a photo of the convoy", "Submit your photo to claim your stamp"], stampTitle: "The Convoy Leader Badge", image: require("../../assets/images/createAConvoy.jpg") },
 ];
 
-export const allQuests: Quest[] = [
-  featuredQuest,
-  ...quests,
-];
-
-export const TOTAL_QUESTS =
-  allQuests.length;
+export const allQuests: Quest[] = [featuredQuest, ...quests];
+export const TOTAL_QUESTS = allQuests.length;

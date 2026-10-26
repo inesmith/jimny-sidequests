@@ -1,4 +1,5 @@
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -140,10 +141,18 @@ export default function QuestDetailsScreen({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <ImagePlaceholder
-            label="QUEST IMAGE"
-            style={styles.heroImage}
-          />
+          {quest.image || quest.id === "get-it-dirty" || quest.title.trim().toLowerCase() === "get it dirty" ? (
+            <Image
+              source={quest.image ?? require("../../assets/images/getItDirty.jpg")}
+              style={styles.heroImage}
+              resizeMode={quest.id === "get-it-dirty" || quest.title.trim().toLowerCase() === "get it dirty" ? "contain" : "cover"}
+            />
+          ) : (
+            <ImagePlaceholder
+              label="QUEST IMAGE"
+              style={styles.heroImage}
+            />
+          )}
 
           <View style={styles.content}>
             <View style={styles.categoryRow}>
@@ -337,7 +346,7 @@ const styles = StyleSheet.create({
 
   heroImage: {
     width: "100%",
-    aspectRatio: 1.77,
+    height: 295,
   },
 
   content: {
