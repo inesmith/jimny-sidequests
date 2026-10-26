@@ -241,6 +241,10 @@ export default function App() {
       onAuthStateChanged(
         auth,
         (user) => {
+          if (hasResolvedInitialAuth && !user) {
+            setScreen("login");
+          }
+
           if (
             !hasResolvedInitialAuth
           ) {
@@ -1135,6 +1139,10 @@ export default function App() {
    * RENDER SCREEN
    */
   const renderScreen = () => {
+    if (screen !== "login" && screen !== "signup" && screen !== "landing" && !auth.currentUser) {
+      return <LoginScreen onSignUp={() => setScreen("signup")} onLogin={() => { if (auth.currentUser) setScreen("home"); }} />;
+    }
+
     /*
      * SIGN UP
      */
@@ -1150,7 +1158,7 @@ export default function App() {
           }
           onLogin={() =>
             setScreen(
-              "home"
+              "login"
             )
           }
         />
@@ -1744,11 +1752,9 @@ export default function App() {
             "signup"
           )
         }
-        onLogin={() =>
-          setScreen(
-            "home"
-          )
-        }
+        onLogin={() => {
+          if (auth.currentUser) setScreen("home");
+        }}
       />
     );
   };
