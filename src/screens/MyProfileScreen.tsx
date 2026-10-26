@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import BottomNav from "../components/BottomNav";
 import {
   collection,
   doc,
@@ -918,111 +919,13 @@ export default function MyProfileScreen({
           </View>
         </ScrollView>
 
-        {/* BOTTOM NAVIGATION */}
-        <View
-          style={
-            styles.bottomNav
-          }
-        >
-          <Pressable
-            style={
-              styles.navItem
-            }
-            onPress={
-              onExplore
-            }
-          >
-            <MaterialIcons
-              name="explore"
-              size={27}
-              color={
-                colors.text
-              }
-            />
-
-            <Text
-              style={
-                styles.navText
-              }
-            >
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={
-              styles.navItem
-            }
-            onPress={
-              onAdventures
-            }
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={28}
-              color={
-                colors.text
-              }
-            />
-
-            <Text
-              style={
-                styles.navText
-              }
-            >
-              Adventures
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={
-              styles.navItem
-            }
-            onPress={
-              onPassport
-            }
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={27}
-              color={
-                colors.text
-              }
-            />
-
-            <Text
-              style={
-                styles.navText
-              }
-            >
-              Passport
-            </Text>
-          </Pressable>
-
-          <View
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={28}
-              color={
-                colors.text
-              }
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              My Profile
-            </Text>
-          </View>
-        </View>
+        {/* SHARED BOTTOM NAVIGATION */}
+        <BottomNav
+          selected="profile"
+          onExplore={onExplore}
+          onHibernate={onAdventures}
+          onPassport={onPassport}
+        />
       </View>
     </SafeAreaView>
   );
@@ -1146,21 +1049,18 @@ function formatMemberSince(
   timestamp?: Timestamp | null
 ) {
   if (!timestamp) {
-    return "New member";
+    return "00/00/00";
   }
 
   try {
-    return timestamp
-      .toDate()
-      .toLocaleDateString(
-        "en-ZA",
-        {
-          month: "long",
-          year: "numeric",
-        }
-      );
+    const date = timestamp.toDate();
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear()).slice(-2);
+
+    return `${day}/${month}/${year}`;
   } catch {
-    return "New member";
+    return "00/00/00";
   }
 }
 
@@ -1233,7 +1133,7 @@ const styles =
      */
 
     header: {
-      height: 72,
+      minHeight: 92,
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 18,
@@ -1261,7 +1161,8 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.extraBold,
-      fontSize: 20,
+      fontSize: 16,
+      lineHeight: 23,
       color: colors.red,
     },
 
@@ -1321,8 +1222,8 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.extraBold,
-      fontSize: 25,
-      lineHeight: 31,
+      fontSize: 20,
+      lineHeight: 26,
       color: colors.text,
     },
 
@@ -1339,7 +1240,7 @@ const styles =
     vehicleText: {
       fontFamily:
         fonts.semiBold,
-      fontSize: 17,
+      fontSize: 13,
       color:
         colors.textSecondary,
     },
@@ -1356,7 +1257,7 @@ const styles =
     vehicleNickname: {
       fontFamily:
         fonts.extraBold,
-      fontSize: 17,
+      fontSize: 13,
       color: colors.text,
     },
 
@@ -1365,7 +1266,7 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.regular,
-      fontSize: 13,
+      fontSize: 12,
       color:
         colors.textSecondary,
     },
@@ -1409,7 +1310,7 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.extraBold,
-      fontSize: 22,
+      fontSize: 18,
       color: colors.white,
     },
 
@@ -1419,7 +1320,7 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.semiBold,
-      fontSize: 10,
+      fontSize: 9,
       color: colors.white,
     },
 
@@ -1432,7 +1333,7 @@ const styles =
       marginBottom: 13,
       fontFamily:
         fonts.extraBold,
-      fontSize: 14,
+      fontSize: 12,
       color: colors.red,
     },
 
@@ -1472,7 +1373,7 @@ const styles =
       flex: 1,
       fontFamily:
         fonts.extraBold,
-      fontSize: 16,
+      fontSize: 13,
       color: colors.text,
     },
 
@@ -1517,7 +1418,7 @@ const styles =
     passportStartTitle: {
       fontFamily:
         fonts.extraBold,
-      fontSize: 16,
+      fontSize: 14,
       color: colors.text,
     },
 
@@ -1534,7 +1435,7 @@ const styles =
       marginTop: 14,
       fontFamily:
         fonts.regular,
-      fontSize: 13,
+      fontSize: 12,
       lineHeight: 19,
       color:
         colors.textSecondary,
@@ -1572,62 +1473,8 @@ const styles =
     createPassportButtonText: {
       fontFamily:
         fonts.extraBold,
-      fontSize: 14,
+      fontSize: 12,
       color: colors.white,
     },
 
-    /*
-     * BOTTOM NAV
-     */
-
-    bottomNav: {
-      minHeight: 86,
-      flexDirection: "row",
-      alignItems: "stretch",
-      paddingHorizontal: 15,
-      paddingTop: 8,
-      paddingBottom: 5,
-      borderTopWidth:
-        StyleSheet.hairlineWidth,
-      borderTopColor:
-        colors.divider,
-      backgroundColor:
-        colors.background,
-    },
-
-    navItem: {
-      flex: 1,
-      minWidth: 0,
-      alignItems: "center",
-      justifyContent:
-        "center",
-      gap: 4,
-      borderRadius: 3,
-    },
-
-    navItemSelected: {
-      backgroundColor:
-        colors.orange,
-      shadowColor: "#000000",
-      shadowOffset: {
-        width: 0,
-        height: 3,
-      },
-      shadowOpacity: 0.18,
-      shadowRadius: 4,
-      elevation: 4,
-    },
-
-    navText: {
-      fontFamily:
-        fonts.medium,
-      fontSize: 10,
-      color: colors.text,
-      textAlign: "center",
-    },
-
-    navTextSelected: {
-      fontFamily:
-        fonts.extraBold,
-    },
   });

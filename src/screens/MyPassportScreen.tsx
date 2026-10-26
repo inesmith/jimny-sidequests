@@ -6,6 +6,8 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
   Text,
   View,
 } from "react-native";
@@ -19,6 +21,7 @@ import {
 
 import { auth, db } from "../firebase/firebase";
 import { colors, fonts } from "../theme/theme";
+import BottomNav from "../components/BottomNav";
 
 /*
  * PASSPORT BACKGROUNDS
@@ -110,6 +113,9 @@ const stampSlots: StampSlot[] = [
     id: "find-your-twin",
     name: "Twin Finder",
   },
+  { id: "future-stamp-7", name: "Coming Soon" },
+  { id: "future-stamp-8", name: "Coming Soon" },
+  { id: "future-stamp-9", name: "Coming Soon" },
 ];
 
 export default function MyPassportScreen({
@@ -126,6 +132,25 @@ export default function MyPassportScreen({
 
   const [errorMessage, setErrorMessage] =
     useState("");
+
+  const [contentSize, setContentSize] = useState({ width: 0, height: 0 });
+  const [stampPage, setStampPage] = useState(0);
+
+  // Keep both passport images visible without vertical scrolling.
+  const passportWidth = contentSize.width > 0 && contentSize.height > 0
+    ? Math.max(0, Math.min(
+        520,
+        contentSize.width - 32,
+        (contentSize.height - 24 - 17) /
+          (1 / passportOneAspectRatio + 1 / passportTwoAspectRatio)
+      ))
+    : 0;
+
+  const handleStampSwipe = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!passportWidth) return;
+    const page = Math.round(event.nativeEvent.contentOffset.x / passportWidth);
+    setStampPage(Math.max(0, Math.min(1, page)));
+  };
 
   /*
    * LOAD PASSPORT FROM FIREBASE
@@ -316,16 +341,19 @@ export default function MyPassportScreen({
       <View style={styles.screen}>
         <Header onBack={onBack} />
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={
-            styles.scrollContent
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
+        <View
+          style={styles.passportViewport}
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            setContentSize((previous) =>
+              previous.width === width && previous.height === height
+                ? previous
+                : { width, height }
+            );
+          }}
         >
-          <View style={styles.passportContent}>
+          {passportWidth > 0 && (
+          <View style={[styles.passportContent, { width: passportWidth }]}>
             {/* ================================= */}
             {/* PASSPORT IDENTITY PAGE */}
             {/* ================================= */}
@@ -518,139 +546,72 @@ export default function MyPassportScreen({
             {/* STAMP PAGE */}
             {/* ================================= */}
 
-            <ImageBackground
-              source={passportTwoImage}
-              resizeMode="contain"
-              style={[
-                styles.passportTwo,
-                {
-                  aspectRatio:
-                    passportTwoAspectRatio,
-                },
-              ]}
-              imageStyle={styles.backgroundImage}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleStampSwipe}
+              style={styles.stampCarousel}
+              contentContainerStyle={{ width: passportWidth * 2 }}
             >
-              {/* PAGE NUMBER */}
-              <Text style={styles.pageNumber}>
-                PAGE 1 OF 2
-              </Text>
+              {[0, 1].map((pageIndex) => (
+                <ImageBackground
+                  key={pageIndex}
+                  source={passportTwoImage}
+                  resizeMode="contain"
+                  style={[
+                    styles.passportTwo,
+                    { width: passportWidth, aspectRatio: passportTwoAspectRatio },
+                  ]}
+                  imageStyle={styles.backgroundImage}
+                >
+                  <Text style={styles.pageNumber}>
+                    PAGE {pageIndex + 1} OF 2
+                  </Text>
 
-              {/* STAMP COUNTER */}
-              <Text style={styles.securedCounter}>
-                {stampCount} /{" "}
-                {PASSPORT_STAMP_TOTAL}{" "}
-                SECURED
-              </Text>
+                  <Text style={styles.securedCounter}>
+                    {stampCount} / {PASSPORT_STAMP_TOTAL} SECURED
+                  </Text>
 
-              {/* HEADER DIVIDER */}
-              <View
-                style={
-                  styles.stampHeaderDivider
-                }
-              />
+                  <View style={styles.stampHeaderDivider} />
 
-              {/* STAMP GRID */}
-              <View style={styles.stampGrid}>
-                {stampSlots.map((slot) => {
-                  const earned =
-                    getEarnedStamp(slot.id);
+                  <View style={styles.stampGrid}>
+                    {stampSlots.slice(pageIndex * 6, pageIndex * 6 + 6).map((slot) => (
+                      <StampPosition
+                        key={slot.id}
+                        slot={slot}
+                        stamp={getEarnedStamp(slot.id)}
+                      />
+                    ))}
+                  </View>
 
-                  return (
-                    <StampPosition
-                      key={slot.id}
-                      slot={slot}
-                      stamp={earned}
-                    />
-                  );
-                })}
-              </View>
-
-              {/* PAGE DOTS */}
-              <View style={styles.pageDots}>
-                <View
-                  style={styles.pageDotActive}
-                />
-
-                <View style={styles.pageDot} />
-              </View>
-            </ImageBackground>
+                  <View style={styles.pageDots}>
+                    {[0, 1].map((dotIndex) => (
+                      <View
+                        key={dotIndex}
+                        style={dotIndex === stampPage ? styles.pageDotActive : styles.pageDot}
+                      />
+                    ))}
+                  </View>
+                </ImageBackground>
+              ))}
+            </ScrollView>
           </View>
-
-          
-        </ScrollView>
+          )}
+        </View>
 
         {/* ================================= */}
         {/* BOTTOM NAVIGATION */}
         {/* ================================= */}
 
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={styles.navItem}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={27}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Adventures
-            </Text>
-          </Pressable>
-
-          <View
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={27}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Passport
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav
+          selected="passport"
+          onExplore={onExplore}
+          onHibernate={onAdventures}
+          onPassport={() => {}}
+          onProfile={onProfile}
+        />
       </View>
     </SafeAreaView>
   );
@@ -861,7 +822,7 @@ const styles =
      */
 
     header: {
-      height: 72,
+      minHeight: 92,
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 18,
@@ -897,7 +858,8 @@ const styles =
       textAlign: "center",
       fontFamily:
         fonts.extraBold,
-      fontSize: 20,
+      fontSize: 16,
+      lineHeight: 23,
       color: colors.red,
     },
 
@@ -937,21 +899,22 @@ const styles =
      * SCROLL AREA
      */
 
-    scrollView: {
+    passportViewport: {
       flex: 1,
-    },
-
-    scrollContent: {
-      paddingBottom: 0,
+      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
     },
 
     passportContent: {
-      width: "100%",
-      maxWidth: 520,
       alignSelf: "center",
-      paddingHorizontal: 16,
-      paddingTop: 21,
-      paddingBottom: 30,
+    },
+
+    stampCarousel: {
+      width: "100%",
+      marginTop: 17,
+      flexGrow: 0,
     },
 
     backgroundImage: {
@@ -1175,7 +1138,6 @@ const styles =
     passportTwo: {
       position: "relative",
       width: "100%",
-      marginTop: 17,
       overflow: "hidden",
     },
 
@@ -1398,21 +1360,34 @@ const styles =
     },
 
     navItemSelected: {
-      backgroundColor:
-        colors.orange,
+      borderTopWidth: 2,
+      borderTopColor: colors.green,
+    },
 
-      shadowColor: "#000000",
+    navImage: {
+      width: 28,
+      height: 28,
+      tintColor: colors.text,
+    },
 
-      shadowOffset: {
-        width: 0,
-        height: 3,
-      },
+    navImageSelected: {
+      tintColor: colors.green,
+    },
 
-      shadowOpacity: 0.18,
+    navProfileCircle: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 2,
+      borderColor: colors.text,
+      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-      shadowRadius: 4,
-
-      elevation: 4,
+    navProfileImage: {
+      width: "100%",
+      height: "100%",
     },
 
     navText: {
@@ -1427,7 +1402,7 @@ const styles =
     },
 
     navTextSelected: {
-      fontFamily:
-        fonts.extraBold,
+      fontFamily: fonts.extraBold,
+      color: colors.green,
     },
   });

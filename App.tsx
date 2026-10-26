@@ -1286,6 +1286,8 @@ export default function App() {
     ) {
       return (
         <MyAdventuresScreen
+          onBack={openProfile}
+          onHibernate={openAdventures}
           onExplore={() =>
             setScreen(
               "home"
@@ -1451,6 +1453,12 @@ export default function App() {
           onPassport={
             openPassport
           }
+          onAdventures={
+            openAdventures
+          }
+          onProfile={
+            openProfile
+          }
           onFindTrail={() =>
             setScreen(
               "hibernate"
@@ -1496,6 +1504,9 @@ export default function App() {
           }
           onPassport={
             openPassport
+          }
+          onProfile={
+            openProfile
           }
           onStampAdded={
             handleStampAdded

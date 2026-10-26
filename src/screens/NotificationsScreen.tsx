@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import BottomNav from "../components/BottomNav";
 
 import {
   colors,
@@ -218,75 +219,7 @@ export default function NotificationsScreen({
         </ScrollView>
 
         {/* BOTTOM NAV */}
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Adventures
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onPassport}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Passport
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={30}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav selected="explore" onExplore={onExplore} onHibernate={onAdventures} onPassport={onPassport} onProfile={onProfile} />
       </View>
     </SafeAreaView>
   );
@@ -484,7 +417,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
     fontFamily: fonts.extraBold,
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 23,
     color: colors.red,
   },
@@ -511,8 +444,8 @@ const styles = StyleSheet.create({
 
   intro: {
     fontFamily: fonts.regular,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 12,
+    lineHeight: 18,
     color: colors.textSecondary,
   },
 
@@ -540,13 +473,13 @@ const styles = StyleSheet.create({
 
   unreadCount: {
     fontFamily: fonts.extraBold,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.text,
   },
 
   markAllText: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.green,
     textDecorationLine: "underline",
   },
@@ -559,7 +492,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: 10,
     fontFamily: fonts.extraBold,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.red,
   },
 
@@ -650,8 +583,8 @@ const styles = StyleSheet.create({
   cardTitle: {
     marginTop: 5,
     fontFamily: fonts.extraBold,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.text,
   },
 
@@ -732,15 +665,8 @@ const styles = StyleSheet.create({
   },
 
   navItemSelected: {
-    backgroundColor: colors.orange,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
+    borderTopWidth: 2,
+    borderTopColor: colors.green,
   },
 
   navText: {
@@ -752,6 +678,7 @@ const styles = StyleSheet.create({
 
   navTextSelected: {
     fontFamily: fonts.extraBold,
+    color: colors.green,
   },
 
   pressed: {

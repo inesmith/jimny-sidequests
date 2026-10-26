@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import BottomNav from "../components/BottomNav";
 
 import { colors, fonts } from "../theme/theme";
 import type { Quest } from "./HomeScreen";
@@ -256,75 +257,7 @@ export default function QuestDetailsScreen({
           </Pressable>
         </View>
 
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Adventures
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onPassport}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Passport
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={30}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav selected="explore" onExplore={onExplore} onHibernate={onAdventures} onPassport={onPassport} onProfile={onProfile} />
       </View>
     </SafeAreaView>
   );

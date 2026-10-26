@@ -11,6 +11,7 @@ import {
 import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import BottomNav from "../components/BottomNav";
 import {
   doc,
   getDoc,
@@ -56,6 +57,7 @@ type QuestCompletionScreenProps = {
   onExplore: () => void;
   onAdventures: () => void;
   onPassport: () => void;
+  onProfile: () => void;
 
   onStampAdded: (
     stamp: SavedPassportStamp
@@ -68,6 +70,7 @@ export default function QuestCompletionScreen({
   onExplore,
   onAdventures,
   onPassport,
+  onProfile,
   onStampAdded,
 }: QuestCompletionScreenProps) {
   const [isAddingToPassport, setIsAddingToPassport] =
@@ -383,80 +386,7 @@ export default function QuestCompletionScreen({
         </ScrollView>
 
         {/* BOTTOM NAVIGATION */}
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={styles.navItem}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Adventures
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onPassport}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Passport
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={30}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav selected="hibernate" onExplore={onExplore} onHibernate={onAdventures} onPassport={onPassport} onProfile={onProfile} />
       </View>
     </SafeAreaView>
   );

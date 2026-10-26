@@ -17,6 +17,7 @@ import {
   getDocs,
   Timestamp,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, db } from "../firebase/firebase";
 import { allQuests } from "../data/quests";
@@ -29,8 +30,10 @@ import {
 
 type MyAdventuresScreenProps = {
   onExplore: () => void;
+  onBack: () => void;
   onPassport: () => void;
   onProfile: () => void;
+  onHibernate?: () => void;
   onUpcomingExperiences: () => void;
   onQuestPress?: (quest: Quest) => void;
 };
@@ -53,8 +56,10 @@ type CompletedQuest = {
 
 export default function MyAdventuresScreen({
   onExplore,
+  onBack,
   onPassport,
   onProfile,
+  onHibernate,
   onUpcomingExperiences,
   onQuestPress,
 }: MyAdventuresScreenProps) {
@@ -62,6 +67,29 @@ export default function MyAdventuresScreen({
     completedQuests,
     setCompletedQuests,
   ] = useState<CompletedQuest[]>([]);
+
+  const [profilePhotoURL, setProfilePhotoURL] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        if (active) setProfilePhotoURL(null);
+        return;
+      }
+      if (active) setProfilePhotoURL(user.photoURL ?? null);
+      try {
+        const snapshot = await getDoc(doc(db, "users", user.uid));
+        const photo = snapshot.data()?.profilePhotoURL;
+        if (active && typeof photo === "string" && photo) {
+          setProfilePhotoURL(photo);
+        }
+      } catch (error) {
+        console.warn("Could not load navigation profile photo:", error);
+      }
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
 
   const [stampCount, setStampCount] =
     useState(0);
@@ -324,7 +352,7 @@ export default function MyAdventuresScreen({
         <View style={styles.header}>
           <Pressable
             style={styles.backButton}
-            onPress={onExplore}
+            onPress={onBack}
             hitSlop={10}
           >
             <MaterialIcons
@@ -664,80 +692,28 @@ export default function MyAdventuresScreen({
         </ScrollView>
 
         {/* BOTTOM NAVIGATION */}
-        <View
-          style={styles.bottomNav}
-        >
-          <Pressable
-            style={styles.navItem}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Explore
-            </Text>
+        <View style={styles.bottomNav}>
+          <Pressable style={styles.navItem} onPress={onExplore}>
+            <Image source={require("../../assets/nav-icons/explore.png")} style={styles.navImage} resizeMode="contain" />
+            <Text style={styles.navText}>Explore</Text>
           </Pressable>
-
-          <View
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Adventures
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onPassport}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Passport
-            </Text>
+          <Pressable style={styles.navItem} onPress={onHibernate}>
+            <Image source={require("../../assets/nav-icons/hibernate.png")} style={styles.navImageHibernate} resizeMode="contain" />
+            <Text style={styles.navText}>Hibernate</Text>
           </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={30}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              My Profile
-            </Text>
+          <Pressable style={styles.navItem} onPress={onPassport}>
+            <Image source={require("../../assets/nav-icons/passport.png")} style={styles.navImagePassport} resizeMode="contain" />
+            <Text style={styles.navText}>Passport</Text>
+          </Pressable>
+          <Pressable style={[styles.navItem, styles.navItemSelected]} onPress={onProfile}>
+            <View style={[styles.navProfileCircle, styles.navProfileSelected]}>
+              {profilePhotoURL ? (
+                <Image source={{ uri: profilePhotoURL }} style={styles.navProfileImage} resizeMode="cover" />
+              ) : (
+                <MaterialIcons name="person" size={22} color={colors.green} />
+              )}
+            </View>
+            <Text style={[styles.navText, styles.navTextSelected]}>My Profile</Text>
           </Pressable>
         </View>
       </View>
@@ -1475,23 +1451,25 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
 
+  navImage: { width: 27, height: 27, tintColor: colors.text },
+  navImageHibernate: { width: 30, height: 27, tintColor: colors.text },
+  navImagePassport: { width: 26, height: 27, tintColor: colors.text },
+  navProfileCircle: {
+    width: 29, height: 29, borderRadius: 15,
+    borderWidth: 1.5, borderColor: colors.text,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
+  },
+  navProfileSelected: { borderColor: colors.green, borderWidth: 2 },
+  navProfileImage: { width: "100%", height: "100%" },
   navItemSelected: {
-    backgroundColor:
-      colors.orange,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
+    borderTopWidth: 2,
+    borderTopColor: colors.green,
   },
 
   navText: {
     fontFamily:
       fonts.medium,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.text,
     textAlign: "center",
   },
@@ -1499,6 +1477,7 @@ const styles = StyleSheet.create({
   navTextSelected: {
     fontFamily:
       fonts.extraBold,
+    color: colors.green,
   },
 
   pressed: {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Alert,
   Linking,
@@ -24,6 +25,10 @@ import * as Location from "expo-location";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 import { colors, fonts } from "../theme/theme";
+import BottomNav from "../components/BottomNav";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../firebase/firebase";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 
@@ -108,28 +113,21 @@ type GoogleTrailPlace = {
 
 // Filter obvious retailers and known false positives, but don't require
 // "4x4" in the name: genuine trails can have names such as "De Wildt".
-const EXCLUDED_PLACE_NAMES = /\b(?:4\s*[x×]\s*4\s*mega\s*world|big\s*red\s*barn|accessories|spares|fitment|workshop|dealership|tyres|tires|parts\s*shop|equipment\s*shop)\b/i;
-const EXCLUDED_NON_TRAILS =
-  /\b(?:acrobranch|caravan|caravans|camping\s+equipment|adventure\s+direct|zipline|zip\s*line|tree\s*top|treetop|paintball|quad\s*bike\s*rental)\b/i;
+const EXCLUDED_PLACE_NAMES = /\b(?:4\s*[x×]\s*4\s*mega\s*world|big\s*red\s*barn|accessories|spares|fitment|workshop|dealership|tyres|products|industries|tours|adventures|club|quad|office|biking|mbt|hiking|tires|parts\s*shop|equipment\s*shop)\b/i;
+const EXCLUDED_NON_TRAILS =/\b(?:acrobranch|caravan|caravans|camping\s+equipment|adventure\s+direct|zipline|zip\s*line|tree\s*top|treetop|paintball|quad\s*bike\s*rental)\b/i;
 const RETAIL_NAME = /\b(?:shop|store|outlet|showroom|supplies|accessories|fitment|dealership|spares)\b/i;
 const STRONG_TRAIL_NAME = /\b(?:4\s*[x×]\s*4|4wd|off[ -]?road|trail|trails|route|routes|adventure\s*park|obstacle|rock\s*crawl)\b/i;
 
-function isLikelyOffroadDestination(
-  place: GoogleTrailPlace
-): boolean {
+
+function isLikelyOffroadDestination(place: GoogleTrailPlace): boolean {
   const name = place.displayName?.text ?? "";
-
-  if (
-    EXCLUDED_PLACE_NAMES.test(name) ||
-    EXCLUDED_NON_TRAILS.test(name) ||
-    RETAIL_NAME.test(name)
-  ) {
-    return false;
-  }
-
-  const hasTrailName = STRONG_TRAIL_NAME.test(name);
-
-  return hasTrailName;
+  if (EXCLUDED_PLACE_NAMES.test(name) || RETAIL_NAME.test(name)) return false;
+  const types = new Set([place.primaryType, ...(place.types ?? [])]);
+  // Google can categorise legitimate trails as parks or tourist attractions.
+  // Reject a retailer only if its name doesn't strongly suggest a route.
+  const isRetail = ["store", "car_repair", "car_dealer", "shopping_mall",
+    "hardware_store", "car_wash"].some((type) => types.has(type));
+  return !isRetail || STRONG_TRAIL_NAME.test(name);
 }
 
 const TRAIL_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
@@ -250,6 +248,32 @@ export default function HibernateScreen({
   onPassport,
   onProfile,
 }: HibernateScreenProps) {
+  const [profilePhotoURL, setProfilePhotoURL] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        if (active) setProfilePhotoURL(null);
+        return;
+      }
+      if (active) setProfilePhotoURL(user.photoURL ?? null);
+      try {
+        const snapshot = await getDoc(doc(db, "users", user.uid));
+        const photo = snapshot.data()?.profilePhotoURL;
+        if (active && typeof photo === "string" && photo) {
+          setProfilePhotoURL(photo);
+        }
+      } catch (error) {
+        console.warn("Could not load navigation profile photo:", error);
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   const mapRef =
     useRef<MapView | null>(null);
 
@@ -315,59 +339,6 @@ export default function HibernateScreen({
       Alert.alert("Unable to open link", "Please try again later.");
     }
   };
-
-  const openMapsChooser = (trail: Trail) => {
-  const destination = encodeURIComponent(trail.name);
-
-  const googleMapsUrl =
-    `https://www.google.com/maps/search/?api=1&query=${destination}&query_place_id=${encodeURIComponent(trail.id)}`;
-
-  const appleMapsUrl =
-    `https://maps.apple.com/?ll=${trail.latitude},${trail.longitude}&q=${destination}`;
-
-  const wazeUrl =
-    `https://waze.com/ul?ll=${trail.latitude}%2C${trail.longitude}&navigate=yes`;
-
-  const options: {
-    text: string;
-    onPress?: () => void;
-    style?: "cancel";
-  }[] = [];
-
-  if (Platform.OS === "ios") {
-    options.push({
-      text: "Apple Maps",
-      onPress: () => {
-        void openDestinationLink(appleMapsUrl);
-      },
-    });
-  }
-
-  options.push(
-        {
-        text: "Google Maps",
-        onPress: () => {
-            void openDestinationLink(googleMapsUrl);
-        },
-        },
-        {
-        text: "Waze",
-        onPress: () => {
-            void openDestinationLink(wazeUrl);
-        },
-        },
-        {
-        text: "Cancel",
-        style: "cancel",
-        }
-    );
-
-    Alert.alert(
-        "Open in Maps",
-        "Choose your preferred navigation app",
-        options
-    );
-    };
 
   const [isSelectingTrail, setIsSelectingTrail] =
     useState(false);
@@ -1242,6 +1213,17 @@ export default function HibernateScreen({
                                     trail.name
                                   }
                                 </Text>
+
+                                <Text
+                                  style={
+                                    styles.trailSummary
+                                  }
+                                >
+                                  {trail.trailDistance > 0 ? `${trail.trailDistance} km` : "Distance not listed"} •{" "}
+                                  {
+                                    trail.duration
+                                  }
+                                </Text>
                               </View>
 
                               <View
@@ -1284,31 +1266,24 @@ export default function HibernateScreen({
                                 styles.metricsRow
                               }
                             >
-                            <MetricBox
-                            label="Distance"
-                            value={
-                                trailDetails[trail.id]?.trailLengthKm != null
-                                ? `${trailDetails[trail.id].trailLengthKm} km`
-                                : "Not verified"
-                            }
-                            />
+                              <MetricBox
+                                label="Distance"
+                                value={trail.trailDistance > 0 ? `${trail.trailDistance} km` : "Not listed"}
+                              />
 
-                            <MetricBox
-                            label="Duration"
-                            value={
-                                trailDetails[trail.id]?.estimatedDuration ??
-                                "Not verified"
-                            }
-                            />
+                              <MetricBox
+                                label="Duration"
+                                value={
+                                  trail.duration
+                                }
+                              />
 
-                            <MetricBox
-                            label="Terrain"
-                            value={
-                                trailDetails[trail.id]?.terrain?.length
-                                ? trailDetails[trail.id].terrain.join(", ")
-                                : "Not verified"
-                            }
-                            />
+                              <MetricBox
+                                label="Terrain"
+                                value={
+                                  trail.terrain
+                                }
+                              />
                             </View>
 
                             <View
@@ -1366,13 +1341,10 @@ export default function HibernateScreen({
                                 {trailDetailsLoading === trail.id && (
                                   <ActivityIndicator color={colors.green} style={{marginBottom: 12}} />
                                 )}
-                                {!trailDetails[trail.id] && (
-                                <Pressable
-                                    style={{marginBottom: 12}}
-                                    onPress={() => openMapsChooser(trail)}
-                                >
-                                    <Text style={styles.detailsText}>Open in Maps ↗</Text>
-                                </Pressable>
+                                {!!trailDetailsErrors[trail.id] && (
+                                  <Pressable onPress={() => { void toggleTrailDetails(trail, true); }}>
+                                    <Text style={styles.expandedText}>{trailDetailsErrors[trail.id]} Tap to retry.</Text>
+                                  </Pressable>
                                 )}
                                 {!trailDetails[trail.id] && (
                                   <Pressable style={{marginBottom: 12}} onPress={() => {
@@ -1383,6 +1355,19 @@ export default function HibernateScreen({
                                 )}
                                 {trailDetails[trail.id] && (
                                   <View style={{gap: 8, marginBottom: 14}}>
+                                    <Text style={styles.expandedText}>
+                                      {trailDetails[trail.id].trailLengthKm != null
+                                        ? `Trail length: ${trailDetails[trail.id].trailLengthKm} km`
+                                        : "Trail length: Not verified"}
+                                    </Text>
+                                    <Text style={styles.expandedText}>
+                                      {`Duration: ${trailDetails[trail.id].estimatedDuration ?? "Not verified"}`}
+                                    </Text>
+                                    <Text style={styles.expandedText}>
+                                      {`Terrain: ${trailDetails[trail.id].terrain.length
+                                        ? trailDetails[trail.id].terrain.join(", ")
+                                        : "Not verified"}`}
+                                    </Text>
                                     {trailDetails[trail.id].website ? (
                                       <Pressable onPress={() => { void openDestinationLink(trailDetails[trail.id].website!); }}>
                                         <Text style={styles.detailsText}>Visit destination website ↗</Text>
@@ -1390,13 +1375,15 @@ export default function HibernateScreen({
                                     ) : (
                                       <Text style={styles.expandedText}>Destination website: Not listed</Text>
                                     )}
-                                    <Pressable onPress={() => openMapsChooser(trail)}>
-                                    <Text style={styles.detailsText}>
-                                        Open in Maps ↗
-                                    </Text>
+                                    <Pressable onPress={() => {
+                                      const mapsUrl = trailDetails[trail.id].googleMapsUrl ||
+                                        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trail.name)}&query_place_id=${encodeURIComponent(trail.id)}`;
+                                      void openDestinationLink(mapsUrl);
+                                    }}>
+                                      <Text style={styles.detailsText}>Open in Google Maps ↗</Text>
                                     </Pressable>
                                     {!!trailDetails[trail.id].sourceUrl && (
-                                      <Pressable onPress={() => openMapsChooser(trail)}>
+                                      <Pressable onPress={() => { void openDestinationLink(trailDetails[trail.id].sourceUrl!); }}>
                                         <Text style={styles.detailsText}>View trail information source ↗</Text>
                                       </Pressable>
                                     )}
@@ -1698,87 +1685,13 @@ export default function HibernateScreen({
         </ScrollView>
 
         {/* BOTTOM NAV */}
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={[
-              styles.navItem,
-              !isQuestMode &&
-                false,
-            ]}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.navItem,
-              !isQuestMode &&
-                styles.navItemSelected,
-            ]}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={29}
-              color={colors.text}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                !isQuestMode &&
-                  styles.navTextSelected,
-              ]}
-            >
-              Adventures
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onPassport}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              Passport
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={30}
-              color={colors.text}
-            />
-
-            <Text
-              style={styles.navText}
-            >
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav
+          selected="hibernate"
+          onExplore={onExplore}
+          onHibernate={onAdventures}
+          onPassport={onPassport}
+          onProfile={onProfile}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -2322,7 +2235,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1.5,
     borderColor: colors.orange,
-        borderRadius: 8,
+    borderRadius: 8,
     backgroundColor: colors.background,
   },
 
@@ -2338,18 +2251,19 @@ const styles = StyleSheet.create({
 
   meetCard: {
     width: "100%",
-    marginTop: 28,
-    padding: 16,
+    marginTop: 26,
+    padding: 15,
     borderWidth: 1.5,
-    borderColor: colors.green,
+    borderColor: colors.orange,
     borderRadius: 8,
+    backgroundColor: colors.background,
   },
 
   meetTitle: {
     fontFamily: fonts.extraBold,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.text,
-    marginBottom: 15,
+    marginBottom: 13,
   },
 
   input: {
@@ -2357,8 +2271,9 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: 1,
     borderColor: colors.green,
-    borderRadius: 8,
+    borderRadius: 6,
     paddingHorizontal: 12,
+    paddingVertical: 10,
     marginBottom: 12,
     fontFamily: fonts.regular,
     fontSize: 13,
@@ -2366,32 +2281,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  messageInput: {
-    minHeight: 95,
-    paddingTop: 12,
-  },
-
-  sendButton: {
-    minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    backgroundColor: colors.green,
-    marginTop: 5,
-  },
-
-  sendButtonText: {
-    fontFamily: fonts.extraBold,
-    fontSize: 13,
-    color: colors.white,
-  },
-
-  meetNote: {
+  inputHint: {
     fontFamily: fonts.regular,
     fontSize: 11,
     color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: 12,
+    marginBottom: 12,
   },
 
   suggestionLoading: {
@@ -2401,7 +2295,7 @@ const styles = StyleSheet.create({
   suggestionsBox: {
     borderWidth: 1,
     borderColor: colors.green,
-    borderRadius: 8,
+    borderRadius: 6,
     marginBottom: 12,
     overflow: "hidden",
   },
@@ -2409,8 +2303,9 @@ const styles = StyleSheet.create({
   suggestionItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
     gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
@@ -2420,13 +2315,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.text,
-  },
-
-  inputHint: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 10,
   },
 
   dateButton: {
@@ -2447,20 +2335,22 @@ const styles = StyleSheet.create({
 
   pickerOverlay: {
     flex: 1,
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 24,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
 
   pickerPanel: {
     backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 30,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
   },
 
   pickerDone: {
     alignSelf: "flex-end",
-    padding: 10,
+    padding: 8,
   },
 
   pickerDoneText: {
@@ -2469,19 +2359,53 @@ const styles = StyleSheet.create({
     color: colors.green,
   },
 
+  messageInput: {
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
+
+  sendButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    backgroundColor: colors.green,
+    marginTop: 2,
+  },
+
+  sendButtonText: {
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    color: colors.white,
+  },
+
+  meetNote: {
+    marginTop: 10,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+
   bottomNav: {
+    minHeight: 86,
     flexDirection: "row",
+    alignItems: "stretch",
+    paddingHorizontal: 15,
+    paddingTop: 8,
+    paddingBottom: 5,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.divider,
     backgroundColor: colors.background,
-    paddingVertical: 10,
   },
 
   navItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 5,
+    gap: 4,
+    minWidth: 0,
   },
 
   navItemSelected: {
@@ -2489,11 +2413,33 @@ const styles = StyleSheet.create({
     borderTopColor: colors.green,
   },
 
+  navImage: {
+    width: 28,
+    height: 28,
+    tintColor: colors.text,
+  },
+
+  navProfileCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.text,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  navProfileImage: {
+    width: "100%",
+    height: "100%",
+  },
+
   navText: {
-    marginTop: 4,
     fontFamily: fonts.medium,
     fontSize: 10,
-    color: colors.textSecondary,
+    color: colors.text,
+    textAlign: "center",
   },
 
   navTextSelected: {
