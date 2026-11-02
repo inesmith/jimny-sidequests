@@ -33,7 +33,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import {
-  getNearbyOwners, sendWave, setNearbyVisibility,
+  getNearbyOwners, sendWave, setNearbyVisibility, waveBack,
   type NearbyOwner,
 } from "../services/nearbyJimnys";
 import { httpsCallable } from "firebase/functions";
@@ -806,6 +806,34 @@ export default function HibernateScreen({
     }
   };
 
+  const waveBackAtOwner = async (ownerId: string) => {
+    if (waveBusy) return;
+
+    setWaveBusy(ownerId);
+
+    try {
+      await waveBack(ownerId);
+
+      if (userLocation) {
+        await refreshNearby(userLocation);
+      }
+
+      Alert.alert(
+        "Wave sent back! 👋",
+        "You're now Jimny friends!"
+      );
+    } catch (error) {
+      console.error("Unable to wave back:", error);
+
+      Alert.alert(
+        "Couldn't wave back",
+        "Please try again."
+      );
+    } finally {
+      setWaveBusy(null);
+    }
+  };
+
   const sendMeetUpInvite = async () => {
     if (isSavingMeetUp) return;
     if (!meetLocation.trim() || !meetDate || !selectedPlaceId || !meetType || meetDate.getTime() <= Date.now()) {
@@ -955,7 +983,22 @@ export default function HibernateScreen({
               )
             )
           : null}
-      </MapView>
+
+          {activeTab === "jimnys" &&
+            nearbyEnabled &&
+            nearbyJimnys.map((owner) => (
+              <Marker
+                key={owner.id}
+                coordinate={{
+                  latitude: owner.latitude,
+                  longitude: owner.longitude,
+                }}
+                title={owner.name}
+                description={`${owner.jimnyName} • ${owner.distanceFromUser.toFixed(1)} km away`}
+                pinColor={colors.green}
+              />
+            ))}
+          </MapView>
     );
   };
 
@@ -1674,23 +1717,35 @@ export default function HibernateScreen({
                         </View>
 
                         <Pressable
-                          disabled={waved || waveBusy === owner.id}
-                          onPress={() => { void waveAtOwner(owner.id); }}
+                          disabled={
+                            waveBusy !== null ||
+                            owner.friendshipStatus === "sent" ||
+                            owner.friendshipStatus === "friends"
+                          }
+                          onPress={() => {
+                            if (owner.friendshipStatus === "incoming") {
+                              void waveBackAtOwner(owner.id);
+                            } else {
+                              void waveAtOwner(owner.id);
+                            }
+                          }}
                           style={[
                             styles.waveButton,
-                            waved &&
+                            (owner.friendshipStatus === "sent" ||
+                              owner.friendshipStatus === "friends") &&
                               styles.waveButtonActive,
                           ]}
                         >
-                          <Text
-                            style={
-                              styles.waveButtonText
-                            }
-                          >
-                            {owner.friendshipStatus === "friends" ? "Friends ✓"
-                              : owner.friendshipStatus === "sent" ? "Waved ✓"
-                              : owner.friendshipStatus === "incoming" ? "Wave back in Inbox"
-                              : waveBusy === owner.id ? "Sending..." : "Wave"}
+                          <Text style={styles.waveButtonText}>
+                            {waveBusy === owner.id
+                              ? "Sending..."
+                              : owner.friendshipStatus === "friends"
+                                ? "Friends"
+                                : owner.friendshipStatus === "sent"
+                                  ? "Waved"
+                                  : owner.friendshipStatus === "incoming"
+                                    ? "Wave Back 👋"
+                                    : "Wave 👋"}
                           </Text>
                         </Pressable>
                       </View>

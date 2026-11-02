@@ -49,6 +49,8 @@ import NotificationsScreen, {
 import MyAdventuresScreen from "./src/screens/MyAdventuresScreen";
 import UpcomingExperiencesScreen from "./src/screens/UpcomingExperiencesScreen";
 
+import { waveBack } from "./src/services/nearbyJimnys";
+
 import ExperienceDetailsScreen, {
   type Experience,
 } from "./src/screens/ExperienceDetailsScreen";
@@ -583,6 +585,30 @@ export default function App() {
         await markNotificationAsRead(
           backendNotification
         );
+
+        if (backendNotification.type === "wave") {
+        if (backendNotification.waveAccepted) {
+          Alert.alert(
+            "Jimny Friends! 🚙",
+            "You're now connected with this Jimny owner."
+          );
+          return;
+        }
+
+        if (!backendNotification.senderId) {
+          Alert.alert("Wave unavailable", "The sender information is missing.");
+          return;
+        }
+
+        await waveBack(backendNotification.senderId);
+
+        Alert.alert(
+          "Wave sent back! 👋",
+          "You're now Jimny friends!"
+        );
+
+        return;
+      }
 
         /*
          * EXPERIENCE / EVENT UPDATE

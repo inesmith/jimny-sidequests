@@ -35,7 +35,9 @@ export type NotificationItem = {
   body: string;
   time: string;
   isRead: boolean;
-
+  waveId?: string;
+  senderId?: string;
+  waveAccepted?: boolean;
   experienceId?: string;
   invitationId?: string;
   rsvpStatus?: "pending" | "accepted" | "declined";
@@ -338,7 +340,9 @@ function NotificationCard({
                   styles.actionButtonTextFilled,
               ]}
             >
-              {actionLabel}
+              {notification.type === "wave" && notification.waveAccepted
+                ? "Friends ✓"
+                : actionLabel}
             </Text>
           </Pressable>
         </View>

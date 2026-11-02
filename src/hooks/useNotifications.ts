@@ -318,7 +318,15 @@ export default function useNotifications() {
         return {
           id: `direct_${item.id}`,
           section: getSection(createdAt),
-          type: data.type === "invite" ? "invite" : "eventUpdate",
+          type:
+            data.type === "invite"
+              ? "invite"
+              : data.type === "wave" || data.type === "waveAccepted"
+                ? "wave"
+                : "eventUpdate",
+          waveId: typeof data.waveId === "string" ? data.waveId : undefined,
+          senderId: typeof data.senderId === "string" ? data.senderId : undefined,
+          waveAccepted: data.type === "waveAccepted",
           label: typeof data.label === "string" ? data.label : "MEET & GREET",
           title: typeof data.title === "string" ? data.title : "Meet & Greet",
           body: typeof data.body === "string" ? data.body : "",
