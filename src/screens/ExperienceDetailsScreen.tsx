@@ -16,8 +16,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import BottomNav from "../components/BottomNav";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -42,6 +44,9 @@ export type Experience = {
   location: string;
   description: string;
   eventDate?: string;
+  eventType?: string;
+  source?: string;
+  imageURL?: string | null;
   locationPlaceId?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -98,6 +103,92 @@ export default function ExperienceDetailsScreen({
 
   const [isRegistering, setIsRegistering] =
     useState(false);
+
+  const [isMeetAndGreet, setIsMeetAndGreet] = useState(
+    experience.eventType === "meetAndGreet"
+  );
+  const [meetEventStatus, setMeetEventStatus] = useState("upcoming");
+  const [meetStartsAt, setMeetStartsAt] = useState<Date | null>(null);
+  const [isLoadingRsvp, setIsLoadingRsvp] = useState(true);
+  const [isSavingRsvp, setIsSavingRsvp] = useState(false);
+  const [rsvpStatus, setRsvpStatus] = useState<"accepted" | "declined" | null>(null);
+  const [organizerId, setOrganizerId] = useState<string | null>(null);
+  const [attendees, setAttendees] = useState<string[]>([]);
+  const [rsvpError, setRsvpError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const loadMeetUp = async () => {
+      try {
+        const eventSnapshot = await getDoc(doc(db, "experiences", experience.id));
+        if (!active) return;
+        if (!eventSnapshot.exists() || eventSnapshot.data().eventType !== "meetAndGreet") {
+          setIsMeetAndGreet(false);
+          return;
+        }
+        const data = eventSnapshot.data();
+        setIsMeetAndGreet(true);
+        setOrganizerId(typeof data.createdBy === "string" ? data.createdBy : null);
+        setMeetEventStatus(data.status ?? "upcoming");
+        setMeetStartsAt(data.startsAt?.toDate?.() ?? null);
+        const user = auth.currentUser;
+        if (!user) return;
+        const ownRsvp = await getDoc(doc(db, "experiences", experience.id, "rsvps", user.uid));
+        if (!active) return;
+        const savedStatus = ownRsvp.data()?.status;
+        setRsvpStatus(savedStatus === "accepted" || savedStatus === "declined" ? savedStatus : null);
+        if (data.createdBy === user.uid) {
+          const allRsvps = await getDocs(collection(db, "experiences", experience.id, "rsvps"));
+          const acceptedIds = allRsvps.docs.filter((item) => item.data().status === "accepted").map((item) => item.id);
+          const names = await Promise.all(acceptedIds.map(async (id) => {
+            try {
+              const profile = await getDoc(doc(db, "users", id));
+              return profile.data()?.fullName || "Jimny Owner";
+            } catch { return "Jimny Owner"; }
+          }));
+          if (active) setAttendees(names);
+        }
+      } catch (error) {
+        console.error("Unable to load Meet & Greet RSVP:", error);
+        if (active) setRsvpError("Couldn't load RSVP details. Please try reopening this experience.");
+      } finally {
+        if (active) setIsLoadingRsvp(false);
+      }
+    };
+    void loadMeetUp();
+    return () => { active = false; };
+  }, [experience.id]);
+
+  const handleRsvp = async (status: "accepted" | "declined") => {
+    const user = auth.currentUser;
+    if (!user || isSavingRsvp) return;
+    if (meetEventStatus !== "upcoming" || (meetStartsAt && meetStartsAt.getTime() <= Date.now())) {
+      Alert.alert("RSVP unavailable", "This Meet & Greet is no longer accepting RSVPs.");
+      return;
+    }
+    try {
+      setIsSavingRsvp(true);
+      await setDoc(doc(db, "experiences", experience.id, "rsvps", user.uid), {
+        userId: user.uid,
+        status,
+        respondedAt: serverTimestamp(),
+      });
+      setRsvpStatus(status);
+      Alert.alert("RSVP saved", status === "accepted" ? "You're on the list! See you there." : "Thanks for letting the crew know.");
+      if (organizerId === user.uid) {
+        const allRsvps = await getDocs(collection(db, "experiences", experience.id, "rsvps"));
+        const acceptedIds = allRsvps.docs.filter((item) => item.data().status === "accepted").map((item) => item.id);
+        const names = await Promise.all(acceptedIds.map(async (id) => {
+          try { const profile = await getDoc(doc(db, "users", id)); return profile.data()?.fullName || "Jimny Owner"; }
+          catch { return "Jimny Owner"; }
+        }));
+        setAttendees(names);
+      }
+    } catch (error) {
+      console.error("Unable to save RSVP:", error);
+      Alert.alert("RSVP failed", "Couldn't save your response. Please try again.");
+    } finally { setIsSavingRsvp(false); }
+  };
 
   const [guests, setGuests] = useState("");
 
@@ -663,7 +754,13 @@ export default function ExperienceDetailsScreen({
                 experience.
               </Text>
 
-              {/* REGISTRATION INTRO */}
+              {isMeetAndGreet ? (
+                <View style={styles.registrationIntro}>
+                  <Text style={styles.registrationHeading}>JOINING THE ADVENTURE?</Text>
+                  <Text style={styles.registrationDescription}>Let the crew know whether you'll be there!</Text>
+                </View>
+              ) : (
+              // REGISTRATION INTRO
               <View
                 style={
                   styles.registrationIntro
@@ -687,6 +784,8 @@ export default function ExperienceDetailsScreen({
                   experience.
                 </Text>
               </View>
+
+              )}
 
               {/* PROFILE CARD */}
               <View
@@ -753,7 +852,52 @@ export default function ExperienceDetailsScreen({
                 </Text>
               ) : null}
 
-              {/* REGISTRATION FORM */}
+              {isMeetAndGreet ? (
+                <View style={styles.formCard}>
+                  <Text style={styles.formTitle}>Meet & Greet RSVP</Text>
+                  {isLoadingRsvp ? <ActivityIndicator color={colors.green} /> : (
+                    <>
+                      {!!rsvpError && <Text style={styles.errorText}>{rsvpError}</Text>}
+                      {rsvpStatus && (
+                        <Text style={styles.registrationDescription}>
+                          Your response: {rsvpStatus === "accepted" ? "Count Me In!" : "Maybe Next Time"}
+                        </Text>
+                      )}
+                      <View style={styles.rsvpButtonRow}>
+                        <Pressable
+                          disabled={isSavingRsvp || meetEventStatus !== "upcoming" || !!(meetStartsAt && meetStartsAt.getTime() <= Date.now())}
+                          onPress={() => { void handleRsvp("accepted"); }}
+                          style={[styles.rsvpButton, rsvpStatus === "accepted" && styles.rsvpSelected]}
+                        >
+                          <Text style={[styles.rsvpButtonText, rsvpStatus === "accepted" && styles.rsvpSelectedText]}>COUNT ME IN!</Text>
+                        </Pressable>
+                        <Pressable
+                          disabled={isSavingRsvp || meetEventStatus !== "upcoming" || !!(meetStartsAt && meetStartsAt.getTime() <= Date.now())}
+                          onPress={() => { void handleRsvp("declined"); }}
+                          style={[styles.rsvpButton, rsvpStatus === "declined" && styles.rsvpSelected]}
+                        >
+                          <Text style={[styles.rsvpButtonText, rsvpStatus === "declined" && styles.rsvpSelectedText]}>MAYBE NEXT TIME</Text>
+                        </Pressable>
+                      </View>
+                      {isSavingRsvp && <ActivityIndicator color={colors.green} />}
+                      {(meetEventStatus !== "upcoming" || !!(meetStartsAt && meetStartsAt.getTime() <= Date.now())) && (
+                        <Text style={styles.registrationDescription}>RSVPs are closed for this event.</Text>
+                      )}
+                      {organizerId === auth.currentUser?.uid && (
+                        <View style={styles.attendeeSection}>
+                          <Text style={styles.registrationHeading}>ATTENDING ({attendees.length})</Text>
+                          {attendees.length === 0 ? (
+                            <Text style={styles.registrationDescription}>No confirmed attendees yet.</Text>
+                          ) : attendees.map((name, index) => (
+                            <Text key={`${index}-${name}`} style={styles.registrationDescription}>• {name}</Text>
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+              ) : (
+              // REGISTRATION FORM
               <View
                 style={styles.formCard}
               >
@@ -819,7 +963,7 @@ export default function ExperienceDetailsScreen({
                   onChangeText={
                     setGuests
                   }
-                  placeholder="Number of guests"
+                  placeholder="Number of guests (excluding yourself)"
                   placeholderTextColor="#A7AFBC"
                   keyboardType="number-pad"
                   editable={
@@ -865,7 +1009,7 @@ export default function ExperienceDetailsScreen({
                   onChangeText={
                     setRecoveryGear
                   }
-                  placeholder="Vehicle recovery gear..."
+                  placeholder="Vehicle recovery gear needed..."
                   placeholderTextColor="#A7AFBC"
                   multiline
                   textAlignVertical="top"
@@ -919,6 +1063,7 @@ export default function ExperienceDetailsScreen({
                   before the event.
                 </Text>
               </View>
+              )}
             </View>
           </ScrollView>
 
@@ -1365,6 +1510,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
   },
 
+  rsvpButtonRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+  rsvpButton: { flex: 1, minHeight: 48, borderWidth: 1.5, borderColor: colors.green, borderRadius: 5, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  rsvpSelected: { backgroundColor: colors.green },
+  rsvpButtonText: { fontFamily: fonts.extraBold, fontSize: 11, color: colors.green, textAlign: "center" },
+  rsvpSelectedText: { color: colors.white },
+  attendeeSection: { marginTop: 18, gap: 6 },
   pressed: {
     opacity: 0.82,
   },

@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -22,13 +23,14 @@ import MapView, {
   type Region,
 } from "react-native-maps";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 import { colors, fonts } from "../theme/theme";
 import { findCuratedDestination, type CuratedDestination } from "../data/curatedDestinations";
 import BottomNav from "../components/BottomNav";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
@@ -376,8 +378,34 @@ export default function HibernateScreen({
   const placeRequestId = useRef(0);
 
 
-  const [meetMessage, setMeetMessage] =
-    useState("");
+  const [meetMessage, setMeetMessage] = useState("");
+  const [inviteMethod, setInviteMethod] = useState<"nearby" | "share">("nearby");
+  const [meetType, setMeetType] = useState("");
+  const [showMeetTypes, setShowMeetTypes] = useState(false);
+  const [meetCoverImage, setMeetCoverImage] = useState<string | null>(null);
+  const [isSavingMeetUp, setIsSavingMeetUp] = useState(false);
+
+  const chooseMeetCoverImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Photo permission needed", "Allow photo library access to choose a cover image.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        setMeetCoverImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Unable to select meet-up cover image:", error);
+      Alert.alert("Something went wrong", "We couldn't open your photo library.");
+    }
+  };
 
   useEffect(() => {
     const query = meetLocation.trim();
@@ -813,29 +841,71 @@ export default function HibernateScreen({
     );
   };
 
-  const sendMeetUpInvite = () => {
-    if (
-      !meetLocation.trim() ||
-      !meetDate || !selectedPlaceId || meetDate.getTime() <= Date.now()
-    ) {
-      Alert.alert(
-        "Missing details",
-        "Select a suggested location and a future date and time before continuing."
-      );
-
+  const sendMeetUpInvite = async () => {
+    if (isSavingMeetUp) return;
+    if (!meetLocation.trim() || !meetDate || !selectedPlaceId || !meetType || meetDate.getTime() <= Date.now()) {
+      Alert.alert("Missing details", "Select a suggested location, a future date and time, and an experience type before continuing.");
       return;
     }
 
-    Alert.alert(
-      "Meet & Greet ready",
-      "Your Meet & Greet details are ready in this prototype. No invitations have been sent."
-    );
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert("Sign in required", "Please sign in before creating a Meet & Greet.");
+      return;
+    }
 
-    setMeetLocation("");
-    setMeetDate(null);
-    setSelectedPlaceId(null);
-    setSuggestions([]);
-    setMeetMessage("");
+    setIsSavingMeetUp(true);
+    try {
+      // Save the event first. Nearby invitations, cover uploads and RSVP links
+      // will be connected in later steps; do not claim they were delivered.
+      const event = await addDoc(collection(db, "experiences"), {
+        createdBy: currentUser.uid,
+        source: "community",
+        eventType: "meetAndGreet",
+        visibility: "public",
+        status: "upcoming",
+        title: meetType,
+        experienceType: meetType,
+        location: meetLocation.trim(),
+        placeId: selectedPlaceId,
+        eventDate: `${meetDate.getFullYear()}-${String(meetDate.getMonth() + 1).padStart(2, "0")}-${String(meetDate.getDate()).padStart(2, "0")}`,
+        startsAt: Timestamp.fromDate(meetDate),
+        message: meetMessage.trim(),
+        createdAt: serverTimestamp(),
+      });
+
+      if (inviteMethod === "nearby") {
+        Alert.alert(
+          "Meet & Greet created!",
+          "Your event is saved to Firebase. Nearby invitations aren't connected yet, so no invitations have been sent."
+        );
+      } else {
+        const message = [
+          "🚙 You're invited to a Jimny Meet & Greet!",
+          `Experience: ${meetType}`,
+          `Location: ${meetLocation}`,
+          `Date: ${meetDate.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}`,
+          `Time: ${meetDate.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false })}`,
+          meetMessage.trim() ? `Message: ${meetMessage.trim()}` : "",
+          "RSVP links are coming soon — contact the organiser to join.",
+        ].filter(Boolean).join("\n");
+        try {
+          await Share.share({ message, title: "Jimny Meet & Greet" });
+        } catch (shareError) {
+          console.warn("Meet & Greet saved, but sharing failed:", shareError);
+          Alert.alert("Meet & Greet created!", "Your event was saved, but the sharing menu couldn't open.");
+        }
+      }
+
+      // The form is kept intact so the organiser can review the details.
+      // Cover images are local previews only until Storage upload is added.
+      console.log("Meet & Greet created:", event.id);
+    } catch (error) {
+      console.error("Could not create Meet & Greet:", error);
+      Alert.alert("Couldn't create Meet & Greet", "Please check your connection and Firebase permissions, then try again.");
+    } finally {
+      setIsSavingMeetUp(false);
+    }
   };
 
   const renderMap = () => {
@@ -1663,75 +1733,77 @@ export default function HibernateScreen({
               </View>
             )}
 
-            {/* MEET & GREET */}
-            <View
-              style={styles.meetCard}
-            >
-              <Text
-                style={styles.meetTitle}
-              >
-                Start a Meet & Greet
-              </Text>
+            {/* MEET & GREET — matches the Upcoming Experiences form */}
+            <View style={styles.meetCard}>
+              <Text style={styles.meetTitle}>Start a Meet & Greet</Text>
+              <Text style={styles.meetIntro}>Bring the Jimny community together. Fill in the details below.</Text>
 
-              <TextInput
-                value={meetLocation}
-                onChangeText={(value) => {
-                  setMeetLocation(value);
-                  setSelectedPlaceId(null);
-                }}
-                placeholder="Search for a meeting location"
-                placeholderTextColor="#A7ADBA"
-                style={styles.input}
-                autoCorrect={false}
-              />
-              {loadingSuggestions ? (
-                <ActivityIndicator color={colors.green} style={styles.suggestionLoading} />
-              ) : null}
-              {suggestions.length > 0 ? (
+              <Text style={styles.meetLabel}>LOCATION</Text>
+              <View style={styles.meetInputRow}>
+                <MaterialIcons name="location-on" size={20} color={colors.textSecondary} />
+                <TextInput
+                  value={meetLocation}
+                  onChangeText={(value) => {
+                    setMeetLocation(value);
+                    setSelectedPlaceId(null);
+                  }}
+                  placeholder="Search for a meeting location"
+                  placeholderTextColor="#A7AFBC"
+                  style={styles.meetRowInput}
+                  autoCorrect={false}
+                />
+                {loadingSuggestions && <ActivityIndicator size="small" color={colors.green} />}
+              </View>
+              {suggestions.length > 0 && (
                 <View style={styles.suggestionsBox}>
                   {suggestions.map((place) => (
-                    <Pressable
-                      key={place.placeId}
-                      style={styles.suggestionItem}
-                      onPress={() => {
-                        setMeetLocation(place.description);
-                        setSelectedPlaceId(place.placeId);
-                        setSuggestions([]);
-                      }}
-                    >
+                    <Pressable key={place.placeId} style={styles.suggestionItem} onPress={() => {
+                      setMeetLocation(place.description);
+                      setSelectedPlaceId(place.placeId);
+                      setSuggestions([]);
+                    }}>
                       <MaterialIcons name="place" size={19} color={colors.green} />
                       <Text style={styles.suggestionText}>{place.description}</Text>
                     </Pressable>
                   ))}
                 </View>
-              ) : null}
-              {!PLACES_API_KEY ? (
-                <Text style={styles.inputHint}>
-                  Add EXPO_PUBLIC_GOOGLE_PLACES_API_KEY to your .env to enable address suggestions.
-                </Text>
-              ) : null}
+              )}
+              {!!selectedPlaceId && <Text style={styles.meetSelected}>✓ Location selected</Text>}
+              {!PLACES_API_KEY && <Text style={styles.inputHint}>Add EXPO_PUBLIC_GOOGLE_PLACES_API_KEY to your .env to enable address suggestions.</Text>}
 
-              <Pressable
-                onPress={() => setDatePickerMode("date")}
-                style={[styles.input, styles.dateButton]}
-              >
-                <Text style={[styles.dateButtonText, !meetDate && styles.placeholderText]}>
-                  {meetDate
-                    ? meetDate.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })
-                    : "Select date"}
-                </Text>
-                <MaterialIcons name="event" size={21} color={colors.green} />
+              <Text style={styles.meetLabel}>EXPERIENCE TYPE</Text>
+              <Pressable style={styles.meetInputRow} onPress={() => setShowMeetTypes(!showMeetTypes)}>
+                <MaterialIcons name="category" size={20} color={colors.textSecondary} />
+                <Text style={[styles.meetRowValue, !meetType && styles.placeholderText]}>{meetType || "Select experience type"}</Text>
+                <MaterialIcons name={showMeetTypes ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={21} color={colors.textSecondary} />
               </Pressable>
-              <Pressable
-                onPress={() => setDatePickerMode("time")}
-                style={[styles.input, styles.dateButton]}
-              >
-                <Text style={[styles.dateButtonText, !meetDate && styles.placeholderText]}>
-                  {meetDate
-                    ? meetDate.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false })
-                    : "Select time"}
+              {showMeetTypes && (
+                <View style={styles.suggestionsBox}>
+                  {["Coffee Meet-up", "Casual Convoy", "Off-Road Day", "Camping Weekend", "Other"].map((type) => (
+                    <Pressable key={type} style={styles.suggestionItem} onPress={() => { setMeetType(type); setShowMeetTypes(false); }}>
+                      <MaterialIcons name="local-offer" size={18} color={colors.green} />
+                      <Text style={styles.suggestionText}>{type}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              <Text style={styles.meetLabel}>DATE</Text>
+              <Pressable onPress={() => setDatePickerMode("date")} style={styles.meetInputRow}>
+                <MaterialIcons name="event" size={20} color={colors.textSecondary} />
+                <Text style={[styles.meetRowValue, !meetDate && styles.placeholderText]}>
+                  {meetDate ? meetDate.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) : "Select date"}
                 </Text>
-                <MaterialIcons name="schedule" size={21} color={colors.green} />
+                <MaterialIcons name="keyboard-arrow-down" size={21} color={colors.textSecondary} />
+              </Pressable>
+
+              <Text style={styles.meetLabel}>TIME</Text>
+              <Pressable onPress={() => setDatePickerMode("time")} style={styles.meetInputRow}>
+                <MaterialIcons name="schedule" size={20} color={colors.textSecondary} />
+                <Text style={[styles.meetRowValue, !meetDate && styles.placeholderText]}>
+                  {meetDate ? meetDate.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false }) : "Select time"}
+                </Text>
+                <MaterialIcons name="keyboard-arrow-down" size={21} color={colors.textSecondary} />
               </Pressable>
               {datePickerMode && Platform.OS === "ios" ? (
                 <Modal transparent animationType="fade" visible onRequestClose={() => setDatePickerMode(null)}>
@@ -1740,62 +1812,68 @@ export default function HibernateScreen({
                       <Pressable onPress={() => setDatePickerMode(null)} style={styles.pickerDone}>
                         <Text style={styles.pickerDoneText}>Done</Text>
                       </Pressable>
-                      <DateTimePicker
-                        value={meetDate ?? new Date()}
-                        mode={datePickerMode}
-                        display="spinner"
-                        minimumDate={datePickerMode === "date" ? new Date() : undefined}
-                        onChange={onDateChange}
-                      />
+                      <DateTimePicker value={meetDate ?? new Date()} mode={datePickerMode} display="spinner"
+                        minimumDate={datePickerMode === "date" ? new Date() : undefined} onChange={onDateChange} />
                     </View>
                   </View>
                 </Modal>
               ) : datePickerMode ? (
-                <DateTimePicker
-                  value={meetDate ?? new Date()}
-                  mode={datePickerMode}
-                  minimumDate={datePickerMode === "date" ? new Date() : undefined}
-                  onChange={onDateChange}
-                />
+                <DateTimePicker value={meetDate ?? new Date()} mode={datePickerMode}
+                  minimumDate={datePickerMode === "date" ? new Date() : undefined} onChange={onDateChange} />
               ) : null}
 
-              <TextInput
-                value={meetMessage}
-                onChangeText={
-                  setMeetMessage
-                }
-                placeholder="Add invite message..."
-                placeholderTextColor="#A7ADBA"
-                multiline
-                textAlignVertical="top"
-                style={[
-                  styles.input,
-                  styles.messageInput,
-                ]}
-              />
+              <Text style={styles.meetLabel}>INVITE MESSAGE</Text>
+              <View style={[styles.meetInputRow, styles.meetMessageRow]}>
+                <MaterialIcons name="chat-bubble-outline" size={20} color={colors.textSecondary} style={{ marginTop: 2 }} />
+                <TextInput value={meetMessage} onChangeText={setMeetMessage}
+                  placeholder="Tell the community about your meet-up..." placeholderTextColor="#A7AFBC"
+                  multiline textAlignVertical="top" style={[styles.meetRowInput, styles.meetMessageInput]} />
+              </View>
 
-              <Pressable
-                onPress={
-                  sendMeetUpInvite
-                }
-                style={
-                  styles.sendButton
-                }
-              >
-                <Text
-                  style={
-                    styles.sendButtonText
-                  }
+              <Text style={styles.meetLabel}>COVER IMAGE</Text>
+              {meetCoverImage ? (
+                <View style={styles.meetCoverSection}>
+                  <Image source={{ uri: meetCoverImage }} style={styles.meetCoverPreview} resizeMode="cover" />
+                  <View style={styles.meetCoverActions}>
+                    <Pressable onPress={chooseMeetCoverImage}><Text style={styles.meetCoverAction}>Change photo</Text></Pressable>
+                    <Pressable onPress={() => setMeetCoverImage(null)}><Text style={styles.meetCoverAction}>Remove photo</Text></Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={styles.meetCoverPicker} onPress={chooseMeetCoverImage}>
+                  <MaterialIcons name="add-photo-alternate" size={24} color={colors.orange} />
+                  <Text style={styles.meetCoverPickerText}>Choose a cover photo</Text>
+                </Pressable>
+              )}
+
+              <Text style={styles.meetLabel}>SEND INVITATIONS VIA</Text>
+              <View style={styles.inviteMethodRow}>
+                <Pressable
+                  onPress={() => setInviteMethod("nearby")}
+                  style={[styles.inviteMethodOption, inviteMethod === "nearby" && styles.inviteMethodSelected]}
                 >
-                  SEND MEET-UP INVITE
-                </Text>
-              </Pressable>
-
-              <Text
-                style={styles.meetNote}
-              >
-                Prototype preview only — invitations are not sent yet.
+                  <MaterialIcons name="near-me" size={18} color={inviteMethod === "nearby" ? colors.white : colors.green} />
+                  <Text style={[styles.inviteMethodText, inviteMethod === "nearby" && styles.inviteMethodTextSelected]}>Nearby Jimnys</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setInviteMethod("share")}
+                  style={[styles.inviteMethodOption, inviteMethod === "share" && styles.inviteMethodSelected]}
+                >
+                  <MaterialIcons name="share" size={18} color={inviteMethod === "share" ? colors.white : colors.green} />
+                  <Text style={[styles.inviteMethodText, inviteMethod === "share" && styles.inviteMethodTextSelected]}>Share</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.inputHint}>
+                {inviteMethod === "nearby"
+                  ? "Nearby invitations will appear in opted-in Jimny owners' notifications once Firebase delivery is connected."
+                  : "Opens your phone's sharing menu (WhatsApp, Messages, email and more)."}
               </Text>
+
+              <Pressable disabled={isSavingMeetUp} onPress={() => { void sendMeetUpInvite(); }} style={[styles.sendButton, isSavingMeetUp && { opacity: 0.6 }]}>
+                <MaterialIcons name="send" size={18} color={colors.white} />
+                <Text style={styles.sendButtonText}>{isSavingMeetUp ? "CREATING..." : inviteMethod === "share" ? "CREATE & SHARE MEET-UP" : "CREATE MEET & GREET"}</Text>
+              </Pressable>
+              <Text style={styles.meetNote}>{inviteMethod === "share" ? "Creates an event in Firebase and shares the details as text. RSVP links are coming soon." : "Creates an event in Firebase. Nearby invitations are not connected yet."}</Text>
             </View>
           </View>
         </ScrollView>
@@ -2405,15 +2483,35 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
+  inviteMethodRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
+  inviteMethodOption: { flex: 1, minHeight: 48, borderWidth: 1.5, borderColor: colors.orange, borderRadius: 5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 5 },
+  inviteMethodSelected: { backgroundColor: colors.green, borderColor: colors.green },
+  inviteMethodText: { fontFamily: fonts.extraBold, fontSize: 11, color: colors.text },
+  inviteMethodTextSelected: { color: colors.white },
   meetCard: {
     width: "100%",
     marginTop: 26,
     padding: 15,
     borderWidth: 1.5,
-    borderColor: colors.orange,
-    borderRadius: 8,
+    borderColor: colors.green,
+    borderRadius: 6,
     backgroundColor: colors.background,
   },
+
+  meetIntro: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginBottom: 15 },
+  meetLabel: { fontFamily: fonts.extraBold, fontSize: 10, color: colors.text, marginBottom: 5, marginTop: 3 },
+  meetInputRow: { width: "100%", minHeight: 48, marginBottom: 13, paddingHorizontal: 11, paddingVertical: 10, borderWidth: 1.5, borderColor: colors.orange, borderRadius: 4, backgroundColor: colors.background, flexDirection: "row", alignItems: "center", gap: 9 },
+  meetRowInput: { flex: 1, minWidth: 0, padding: 0, fontFamily: fonts.regular, fontSize: 13, color: colors.text },
+  meetRowValue: { flex: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.text },
+  meetSelected: { fontFamily: fonts.medium, fontSize: 11, color: colors.green, marginBottom: 10 },
+  meetCoverSection: { marginBottom: 13, gap: 8 },
+  meetCoverPreview: { width: "100%", aspectRatio: 16 / 9, borderRadius: 4 },
+  meetCoverActions: { flexDirection: "row", gap: 20 },
+  meetCoverAction: { fontFamily: fonts.medium, fontSize: 12, color: colors.orange, textDecorationLine: "underline" },
+  meetCoverPicker: { minHeight: 70, marginBottom: 13, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.orange, borderRadius: 4, alignItems: "center", justifyContent: "center", gap: 4 },
+  meetCoverPickerText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+  meetMessageRow: { minHeight: 100, alignItems: "flex-start" },
+  meetMessageInput: { minHeight: 76 },
 
   meetTitle: {
     fontFamily: fonts.extraBold,
@@ -2527,6 +2625,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: colors.green,
     marginTop: 2,
+    flexDirection: "row",
+    gap: 9,
   },
 
   sendButtonText: {

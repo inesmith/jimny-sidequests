@@ -7,6 +7,7 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -19,6 +20,8 @@ import {
 } from "react-native";
 
 import BottomNav from "../components/BottomNav";
+import * as ImagePicker from "expo-image-picker";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import DateTimePicker, {
@@ -39,6 +42,7 @@ import {
 import {
   auth,
   db,
+  storage,
 } from "../firebase/firebase";
 
 import {
@@ -76,7 +80,7 @@ type ExperienceLocation = {
 /*
  * PRESET EXPERIENCES
  */
-const experiences: Experience[] = [
+export const experiences: Experience[] = [
   {
     id: "franschhoek-coffee-cruise",
     title: "Franschhoek Coffee Cruise",
@@ -156,6 +160,32 @@ export default function UpcomingExperiencesScreen({
     experienceCategory,
     setExperienceCategory,
   ] = useState("");
+
+  const [showExperienceTypes, setShowExperienceTypes] = useState(false);
+
+  const [experienceImage, setExperienceImage] = useState<string | null>(null);
+
+  const chooseExperienceImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Photo permission needed", "Allow photo library access to choose a cover image.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        setExperienceImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Unable to choose experience image:", error);
+      Alert.alert("Something went wrong", "We could not open your photo library.");
+    }
+  };
 
   const [
     experienceDescription,
@@ -267,17 +297,16 @@ export default function UpcomingExperiencesScreen({
                   data.title ?? "",
 
                 category:
-                  data.category ?? "",
+                  data.category ?? data.experienceType ?? "Meet & Greet",
 
                 date:
-                  data.date ?? "",
+                  data.date ?? (data.eventDate ? formatDate(new Date(`${data.eventDate}T12:00:00`)) : data.startsAt?.toDate?.() ? formatDate(data.startsAt.toDate()) : ""),
 
                 eventDate:
-                  data.eventDate ?? "",
+                  data.eventDate ?? (data.startsAt?.toDate?.() ? toLocalDateKey(data.startsAt.toDate()) : ""),
 
                 time:
-                  data.time ??
-                  "To be confirmed",
+                  data.time ?? data.eventTime ?? (data.startsAt?.toDate?.() ? formatTime(data.startsAt.toDate()) : "To be confirmed"),
 
                 location:
                   data.location
@@ -286,11 +315,15 @@ export default function UpcomingExperiencesScreen({
                   "",
 
                 description:
-                  data.description ?? "",
+                  data.description ?? data.message ?? "",
+
+                eventType: data.eventType ?? undefined,
+                source: data.source ?? undefined,
+
+                imageURL: data.imageURL ?? null,
 
                 locationPlaceId:
-                  data.location
-                    ?.placeId ?? null,
+                  data.location?.placeId ?? data.placeId ?? null,
 
                 latitude:
                   data.location
@@ -840,6 +873,18 @@ export default function UpcomingExperiencesScreen({
             selectedTime
           );
 
+        let imageURL: string | null = null;
+        if (experienceImage) {
+          const response = await fetch(experienceImage);
+          const blob = await response.blob();
+          const imageRef = ref(
+            storage,
+            `experiences/${user.uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+          );
+          await uploadBytes(imageRef, blob, { contentType: "image/jpeg" });
+          imageURL = await getDownloadURL(imageRef);
+        }
+
         await addDoc(
           collection(
             db,
@@ -882,6 +927,8 @@ export default function UpcomingExperiencesScreen({
 
             description:
               trimmedDescription,
+
+            imageURL,
 
             createdBy:
               user.uid,
@@ -937,6 +984,7 @@ export default function UpcomingExperiencesScreen({
         setExperienceDescription(
           ""
         );
+        setExperienceImage(null);
 
         /*
          * RELOAD EXPERIENCES
@@ -1280,34 +1328,45 @@ export default function UpcomingExperiencesScreen({
                     }
                   />
 
-                  {/* TYPE */}
-                  <FormLabel text="EXPERIENCE TYPE" />
+                                     {/* TYPE */}
+                   <FormLabel text="EXPERIENCE TYPE" />
 
-                  <TextInput
-                    style={
-                      styles.input
-                    }
-                    value={
-                      experienceCategory
-                    }
-                    onChangeText={(
-                      text
-                    ) =>
-                      setExperienceCategory(
-                        toTitleCase(
-                          text
-                        )
-                      )
-                    }
-                    placeholder="e.g. Casual Convoy"
-                    placeholderTextColor="#A7AFBC"
-                    autoCapitalize="words"
-                    editable={
-                      !isCreating
-                    }
-                  />
+                   <Pressable
+                     style={styles.selector}
+                     onPress={() => setShowExperienceTypes((current) => !current)}
+                     disabled={isCreating}
+                   >
+                     <MaterialIcons name="category" size={20} color={colors.textSecondary} />
+                     <Text style={[styles.selectorText, !experienceCategory && styles.placeholderText]}>
+                       {experienceCategory || "Select experience type"}
+                     </Text>
+                     <MaterialIcons
+                       name={showExperienceTypes ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                       size={23}
+                       color={colors.textSecondary}
+                     />
+                   </Pressable>
 
-                  {/* DATE */}
+                   {showExperienceTypes && (
+                     <View style={styles.experienceTypeOptions}>
+                       {["Coffee Meet-up", "Casual Convoy", "Off-Road Day", "Camping Weekend", "Other"].map((type) => (
+                         <Pressable
+                           key={type}
+                           style={styles.experienceTypeOption}
+                           onPress={() => {
+                             setExperienceCategory(type);
+                             setShowExperienceTypes(false);
+                           }}
+                           disabled={isCreating}
+                         >
+                           <MaterialIcons name="local-offer" size={18} color={colors.green} />
+                           <Text style={styles.experienceTypeOptionText}>{type}</Text>
+                         </Pressable>
+                       ))}
+                     </View>
+                   )}
+
+{/* DATE */}
                   <FormLabel text="DATE" />
 
                   <Pressable
@@ -1736,6 +1795,25 @@ export default function UpcomingExperiencesScreen({
                     }
                   />
 
+                  {/* EXPERIENCE COVER IMAGE */}
+                  <FormLabel text="EXPERIENCE COVER IMAGE" />
+                  {experienceImage ? (
+                    <View style={styles.coverImageSection}>
+                      <Image source={{ uri: experienceImage }} style={styles.coverImagePreview} resizeMode="cover" />
+                      <Pressable onPress={chooseExperienceImage} disabled={isCreating}>
+                        <Text style={styles.coverImageAction}>Change photo</Text>
+                      </Pressable>
+                      <Pressable onPress={() => setExperienceImage(null)} disabled={isCreating}>
+                        <Text style={styles.coverImageAction}>Remove photo</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable style={styles.coverImagePicker} onPress={chooseExperienceImage} disabled={isCreating}>
+                      <MaterialIcons name="add-photo-alternate" size={24} color={colors.orange} />
+                      <Text style={styles.coverImagePickerText}>Choose a cover photo</Text>
+                    </Pressable>
+                  )}
+
                   {/* CREATE */}
                   <Pressable
                     style={({
@@ -1851,6 +1929,13 @@ function ExperienceCard({
         styles.experienceCard
       }
     >
+      {(experience as Experience & { imageURL?: string | null }).imageURL ? (
+        <Image
+          source={{ uri: (experience as Experience & { imageURL?: string | null }).imageURL! }}
+          style={styles.experienceBanner}
+          resizeMode="cover"
+        />
+      ) : (
       <View
         style={
           styles.imagePlaceholder
@@ -1872,6 +1957,7 @@ function ExperienceCard({
           EXPERIENCE IMAGE
         </Text>
       </View>
+      )}
 
       <View
         style={
@@ -2245,6 +2331,43 @@ const styles =
       elevation: 3,
     },
 
+    experienceBanner: {
+      width: "100%",
+      aspectRatio: 2.25,
+    },
+
+    coverImageSection: {
+      marginBottom: 13,
+      gap: 8,
+    },
+    coverImagePreview: {
+      width: "100%",
+      aspectRatio: 16 / 9,
+      borderRadius: 4,
+    },
+    coverImagePicker: {
+      minHeight: 70,
+      marginBottom: 13,
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+      borderColor: colors.orange,
+      borderRadius: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+    },
+    coverImagePickerText: {
+      fontFamily: fonts.semiBold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    coverImageAction: {
+      fontFamily: fonts.semiBold,
+      fontSize: 12,
+      color: colors.orange,
+      textDecorationLine: "underline",
+    },
+
     imagePlaceholder: {
       width: "100%",
       aspectRatio: 2.25,
@@ -2531,6 +2654,32 @@ const styles =
       borderRadius: 4,
       backgroundColor:
         colors.background,
+    },
+
+    experienceTypeOptions: {
+      width: "100%",
+      marginTop: -9,
+      marginBottom: 13,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 4,
+      backgroundColor: colors.surface,
+    },
+    experienceTypeOption: {
+      minHeight: 46,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 9,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    experienceTypeOptionText: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      color: colors.text,
     },
 
     selectorText: {

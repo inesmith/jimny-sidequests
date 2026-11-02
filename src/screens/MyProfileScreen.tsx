@@ -48,6 +48,7 @@ type MyProfileScreenProps = {
    * My Adventures & Stats screen.
    */
   onMyAdventures: () => void;
+  onMyExperiences: () => void;
 
   onPassport: () => void;
   onCreatePassport: () => void;
@@ -95,6 +96,7 @@ export default function MyProfileScreen({
   onExplore,
   onAdventures,
   onMyAdventures,
+  onMyExperiences,
   onPassport,
   onCreatePassport,
   onEditProfile,
@@ -809,6 +811,12 @@ export default function MyProfileScreen({
                 />
 
                 <ToolButton
+                  icon="event"
+                  title="My Experiences"
+                  onPress={onMyExperiences}
+                />
+
+                <ToolButton
                   icon="settings"
                   title="Edit Account Profile"
                   onPress={
@@ -920,6 +928,12 @@ export default function MyProfileScreen({
                 />
 
                 <ToolButton
+                  icon="event"
+                  title="My Experiences"
+                  onPress={onMyExperiences}
+                />
+
+                <ToolButton
                   icon="settings"
                   title="Edit Profile"
                   onPress={
@@ -989,7 +1003,8 @@ function ToolButton({
   icon:
     | "menu-book"
     | "monitor-heart"
-    | "settings";
+    | "settings"
+    | "event";
   title: string;
   onPress: () => void;
 }) {

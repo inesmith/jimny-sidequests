@@ -13,6 +13,7 @@ import {
   collection,
   doc,
   getDoc,
+  runTransaction,
   onSnapshot,
   orderBy,
   query,
@@ -80,6 +81,8 @@ export default function useNotifications() {
       NotificationState
     >
   >({});
+
+  const [directNotifications, setDirectNotifications] = useState<BackendNotificationItem[]>([]);
 
   const [
     isLoadingNotifications,
@@ -303,6 +306,34 @@ export default function useNotifications() {
     return unsubscribe;
   }, [currentUser]);
 
+  /* PERSONAL INVITATIONS AND RSVP UPDATES */
+  useEffect(() => {
+    if (!currentUser) { setDirectNotifications([]); return; }
+    return onSnapshot(collection(db, "users", currentUser.uid, "notifications"), (snapshot) => {
+      const items: BackendNotificationItem[] = snapshot.docs.map((item) => {
+        const data = item.data();
+        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt : null;
+        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt : null;
+        const state = notificationStates[`direct_${item.id}`];
+        return {
+          id: `direct_${item.id}`,
+          section: getSection(createdAt),
+          type: data.type === "invite" ? "invite" : "eventUpdate",
+          label: typeof data.label === "string" ? data.label : "MEET & GREET",
+          title: typeof data.title === "string" ? data.title : "Meet & Greet",
+          body: typeof data.body === "string" ? data.body : "",
+          time: formatNotificationTime(createdAt),
+          isRead: state?.isRead === true,
+          experienceId: typeof data.experienceId === "string" ? data.experienceId : undefined,
+          invitationId: data.type === "invite" ? item.id : undefined,
+          rsvpStatus: data.rsvpStatus === "accepted" || data.rsvpStatus === "declined" ? data.rsvpStatus : "pending",
+          createdAt, updatedAt,
+        };
+      });
+      setDirectNotifications(items);
+    }, (error) => console.error("Unable to load personal notifications:", error));
+  }, [currentUser, notificationStates]);
+
   /*
    * TURN BACKEND EXPERIENCES
    * INTO NOTIFICATIONS
@@ -321,7 +352,7 @@ export default function useNotifications() {
           now.getDate()
         );
 
-      return experiences
+      const experienceItems = experiences
         .filter(
           (experience) => {
             if (
@@ -424,8 +455,10 @@ export default function useNotifications() {
                 a.createdAt
             )
         );
+      return [...directNotifications, ...experienceItems].sort((a,b) => getTimestampMillis(b.updatedAt ?? b.createdAt) - getTimestampMillis(a.updatedAt ?? a.createdAt));
     }, [
       experiences,
+      directNotifications,
       notificationStates,
     ]);
 
@@ -662,6 +695,32 @@ export default function useNotifications() {
       }
     };
 
+  const respondToInvite = async (notification: BackendNotificationItem, response: "accepted" | "declined") => {
+    if (!currentUser || !notification.invitationId || !notification.experienceId) throw new Error("Invitation unavailable");
+    const invitationRef = doc(db, "users", currentUser.uid, "notifications", notification.invitationId);
+    const rsvpRef = doc(db, "experiences", notification.experienceId, "rsvps", currentUser.uid);
+    await runTransaction(db, async (transaction) => {
+      const invitation = await transaction.get(invitationRef);
+      if (!invitation.exists() || invitation.data().type !== "invite") throw new Error("Invitation no longer available");
+      const data = invitation.data();
+      if (data.experienceId !== notification.experienceId) throw new Error("Invalid invitation");
+      const experienceRef = doc(db, "experiences", notification.experienceId!);
+      const experience = await transaction.get(experienceRef);
+      if (!experience.exists()) throw new Error("Experience no longer available");
+      transaction.set(rsvpRef, { userId: currentUser.uid, status: response, updatedAt: serverTimestamp(), invitationId: notification.invitationId }, { merge: true });
+      transaction.update(invitationRef, { rsvpStatus: response, updatedAt: serverTimestamp() });
+      const organiserId = typeof data.organiserId === "string" ? data.organiserId : null;
+      if (organiserId && organiserId !== currentUser.uid) {
+        const organiserNotification = doc(collection(db, "users", organiserId, "notifications"));
+        transaction.set(organiserNotification, {
+          type: "rsvp", label: "MEET & GREET RSVP", title: response === "accepted" ? "Someone is coming!" : "RSVP update",
+          body: `${currentUser.displayName || "A Jimny owner"} ${response === "accepted" ? "accepted" : "declined"} your invitation.`,
+          experienceId: notification.experienceId, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        });
+      }
+    });
+  };
+
   return {
     notifications,
     unreadCount,
@@ -669,6 +728,7 @@ export default function useNotifications() {
     markNotificationAsRead,
     markAllAsRead,
     getExperienceFromNotification,
+    respondToInvite,
   };
 }
 

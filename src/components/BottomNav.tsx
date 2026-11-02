@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   bottomNav: { minHeight: 86, flexDirection: "row", alignItems: "stretch", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider, backgroundColor: colors.background, paddingHorizontal: 15, paddingTop: 8, paddingBottom: 5 },
   navItem: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 4, borderRadius: 3, borderTopWidth: 2, borderTopColor: "transparent" },
   navItemSelected: { borderTopColor: colors.green },
-  profileCircle: { borderWidth: 2, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  profileCircle: { borderWidth: 1.5, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   profileImage: { width: "100%", height: "100%" },
   navText: { fontFamily: fonts.medium, fontSize: 11, color: colors.text, textAlign: "center" },
   navTextSelected: { fontFamily: fonts.extraBold, color: colors.green },

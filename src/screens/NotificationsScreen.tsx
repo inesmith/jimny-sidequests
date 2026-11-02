@@ -37,6 +37,8 @@ export type NotificationItem = {
   isRead: boolean;
 
   experienceId?: string;
+  invitationId?: string;
+  rsvpStatus?: "pending" | "accepted" | "declined";
 };
 
 type NotificationsScreenProps = {
@@ -45,6 +47,8 @@ type NotificationsScreenProps = {
   onBack: () => void;
 
   onMarkAllAsRead: () => void;
+
+  onRSVP?: (notification: NotificationItem, response: "accepted" | "declined") => void;
 
   onNotificationPress: (
     notification: NotificationItem
@@ -67,6 +71,7 @@ export default function NotificationsScreen({
   onBack,
   onMarkAllAsRead,
   onNotificationPress,
+  onRSVP,
   onExplore,
   onAdventures,
   onPassport,
@@ -93,7 +98,7 @@ export default function NotificationsScreen({
           >
             <MaterialIcons
               name="arrow-back"
-              size={22}
+              size={25}
               color={colors.text}
             />
 
@@ -199,6 +204,7 @@ export default function NotificationsScreen({
                           notification={
                             notification
                           }
+                          onRSVP={onRSVP ? (response) => onRSVP(notification, response) : undefined}
                           onPress={() =>
                             onNotificationPress(
                               notification
@@ -228,8 +234,10 @@ export default function NotificationsScreen({
 function NotificationCard({
   notification,
   onPress,
+  onRSVP,
 }: {
   notification: NotificationItem;
+  onRSVP?: (response: "accepted" | "declined") => void;
   onPress: () => void;
 }) {
   const icon = getNotificationIcon(
@@ -295,6 +303,21 @@ function NotificationCard({
           <Text style={styles.cardTime}>
             {notification.time}
           </Text>
+
+          {notification.type === "invite" && notification.invitationId && (
+            notification.rsvpStatus === "pending" || !notification.rsvpStatus ? (
+              <View style={styles.rsvpRow}>
+                <Pressable style={[styles.actionButton, styles.actionButtonFilled]} onPress={() => onRSVP?.("accepted")}>
+                  <Text style={styles.actionButtonTextFilled}>Accept</Text>
+                </Pressable>
+                <Pressable style={styles.actionButton} onPress={() => onRSVP?.("declined")}>
+                  <Text style={styles.actionButtonText}>Decline</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.rsvpStatus}>{notification.rsvpStatus === "accepted" ? "You're going!" : "Invitation declined"}</Text>
+            )
+          )}
 
           <Pressable
             style={({ pressed }) => [
@@ -400,15 +423,15 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 90,
+    width: 105,
     height: 44,
     flexDirection: "row",
     alignItems: "center",
   },
 
   backText: {
-    marginLeft: 5,
-    fontFamily: fonts.regular,
+    marginLeft: 6,
+    fontFamily: fonts.medium,
     fontSize: 16,
     color: colors.text,
   },
@@ -423,7 +446,7 @@ const styles = StyleSheet.create({
   },
 
   headerSpacer: {
-    width: 90,
+    width: 105,
   },
 
   scrollView: {
@@ -603,6 +626,8 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
+  rsvpRow: { flexDirection: "row", gap: 10 },
+  rsvpStatus: { marginTop: 10, fontFamily: fonts.semiBold, color: colors.green, fontSize: 12 },
   actionButton: {
     alignSelf: "flex-start",
     minHeight: 34,
