@@ -32,6 +32,10 @@ import BottomNav from "../components/BottomNav";
 import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
+import {
+  getNearbyOwners, sendWave, setNearbyVisibility,
+  type NearbyOwner,
+} from "../services/nearbyJimnys";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 
@@ -92,16 +96,6 @@ type Trail = {
   latitude: number;
   longitude: number;
   image?: number;
-};
-
-type NearbyJimny = {
-  id: string;
-  name: string;
-  jimnyName: string;
-  model: string;
-  year: string;
-  latitudeOffset: number;
-  longitudeOffset: number;
 };
 
 type HibernateScreenProps = {
@@ -170,45 +164,6 @@ function searchCentres(latitude: number, longitude: number, radiusKm: number) {
   }
   return centres;
 }
-
-const NEARBY_JIMNYS: NearbyJimny[] = [
-  {
-    id: "sarah",
-    name: "Sarah M.",
-    jimnyName: "Muddy",
-    model: "JC",
-    year: "2024",
-    latitudeOffset: 0.012,
-    longitudeOffset: -0.012,
-  },
-  {
-    id: "james",
-    name: "James K.",
-    jimnyName: "Beast",
-    model: "GLX",
-    year: "2020",
-    latitudeOffset: -0.016,
-    longitudeOffset: -0.009,
-  },
-  {
-    id: "thandi",
-    name: "Thandi N.",
-    jimnyName: "Sunny",
-    model: "GA",
-    year: "2023",
-    latitudeOffset: 0.006,
-    longitudeOffset: 0.018,
-  },
-  {
-    id: "david",
-    name: "David R.",
-    jimnyName: "Rocky",
-    model: "GLX",
-    year: "2022",
-    latitudeOffset: -0.012,
-    longitudeOffset: 0.017,
-  },
-];
 
 function degreesToRadians(
   degrees: number
@@ -364,8 +319,49 @@ export default function HibernateScreen({
   const [isSelectingTrail, setIsSelectingTrail] =
     useState(false);
 
-  const [wavedOwners, setWavedOwners] =
-    useState<string[]>([]);
+  const [nearbyJimnys, setNearbyJimnys] = useState<NearbyOwner[]>([]);
+  const [nearbyEnabled, setNearbyEnabled] = useState(false);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState("");
+  const [waveBusy, setWaveBusy] = useState<string | null>(null);
+
+  const refreshNearby = async (coordinates: {latitude: number; longitude: number}) => {
+    setNearbyLoading(true);
+    setNearbyError("");
+    try {
+      await setNearbyVisibility(true, coordinates);
+      setNearbyJimnys(await getNearbyOwners(coordinates));
+    } catch (error) {
+      console.error("Unable to load nearby Jimnys:", error);
+      setNearbyError("Couldn't load nearby Jimnys. Please try again.");
+    } finally {
+      setNearbyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!nearbyEnabled || !userLocation || activeTab !== "jimnys") return;
+    void refreshNearby(userLocation);
+  }, [nearbyEnabled, userLocation, activeTab]);
+
+  // Restore the user's explicit opt-in from Firestore when this screen opens.
+  // Leaving Hibernate does not silently revoke consent or hide the user.
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        if (active) { setNearbyEnabled(false); setNearbyJimnys([]); }
+        return;
+      }
+      try {
+        const presence = await getDoc(doc(db, "nearbyPresence", user.uid));
+        if (active) setNearbyEnabled(presence.exists() && presence.data()?.enabled === true);
+      } catch (error) {
+        console.warn("Unable to restore nearby discovery setting:", error);
+      }
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
 
   const [meetLocation, setMeetLocation] =
     useState("");
@@ -707,42 +703,6 @@ export default function HibernateScreen({
     }
   }, [visibleTrails, destinationPhotos]);
 
-  const nearbyJimnys =
-    useMemo(() => {
-      if (!userLocation) {
-        return [];
-      }
-
-      return NEARBY_JIMNYS.map(
-        (owner) => {
-          const latitude =
-            userLocation.latitude +
-            owner.latitudeOffset;
-
-          const longitude =
-            userLocation.longitude +
-            owner.longitudeOffset;
-
-          return {
-            ...owner,
-            latitude,
-            longitude,
-            distanceFromUser:
-              calculateDistanceKm(
-                userLocation.latitude,
-                userLocation.longitude,
-                latitude,
-                longitude
-              ),
-          };
-        }
-      ).sort(
-        (a, b) =>
-          a.distanceFromUser -
-          b.distanceFromUser
-      );
-    }, [userLocation]);
-
   const changeTab = (
     tab: HibernateTab
   ) => {
@@ -831,14 +791,19 @@ export default function HibernateScreen({
     }
   };
 
-  const waveAtOwner = (
-    ownerId: string
-  ) => {
-    setWavedOwners((current) =>
-      current.includes(ownerId)
-        ? current
-        : [...current, ownerId]
-    );
+  const waveAtOwner = async (ownerId: string) => {
+    if (waveBusy) return;
+    setWaveBusy(ownerId);
+    try {
+      await sendWave(ownerId);
+      if (userLocation) await refreshNearby(userLocation);
+      Alert.alert("Wave sent! 👋", "They can wave back from their notifications.");
+    } catch (error) {
+      console.error("Unable to send wave:", error);
+      Alert.alert("Couldn't send wave", "Please try again.");
+    } finally {
+      setWaveBusy(null);
+    }
   };
 
   const sendMeetUpInvite = async () => {
@@ -989,22 +954,7 @@ export default function HibernateScreen({
                 />
               )
             )
-          : nearbyJimnys.map(
-              (owner) => (
-                <Marker
-                  key={owner.id}
-                  coordinate={{
-                    latitude:
-                      owner.latitude,
-                    longitude:
-                      owner.longitude,
-                  }}
-                  title={owner.name}
-                  description={`${owner.jimnyName} • ${owner.model} ${owner.year}`}
-                  pinColor={colors.red}
-                />
-              )
-            )}
+          : null}
       </MapView>
     );
   };
@@ -1640,15 +1590,34 @@ export default function HibernateScreen({
                 </View>
               </>
             ) : (
-              <View
-                style={styles.ownerList}
-              >
+              <View style={styles.ownerList}>
+                {!nearbyEnabled ? (
+                  <Pressable style={styles.waveButton} onPress={() => {
+                    if (!userLocation) {
+                      Alert.alert("Location needed", "Enable location access to discover nearby owners.");
+                      return;
+                    }
+                    Alert.alert("Share approximate location?",
+                      "Other signed-in users can see your approximate location while discovery is enabled. Turn it off at any time.", [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Enable", onPress: () => setNearbyEnabled(true) },
+                      ]);
+                  }}><Text style={styles.waveButtonText}>Enable Jimny discovery</Text></Pressable>
+                ) : (
+                  <Pressable style={styles.waveButton} onPress={() => {
+                    void setNearbyVisibility(false).then(() => {
+                      setNearbyEnabled(false); setNearbyJimnys([]);
+                    }).catch(() => Alert.alert("Error", "Couldn't turn off discovery."));
+                  }}><Text style={styles.waveButtonText}>Turn off discovery</Text></Pressable>
+                )}
+                {nearbyLoading && <ActivityIndicator />}
+                {!!nearbyError && <Text style={styles.ownerDetails}>{nearbyError}</Text>}
+                {nearbyEnabled && !nearbyLoading && nearbyJimnys.length === 0 && (
+                  <Text style={styles.ownerDetails}>No active Jimny owners found within 10 km yet.</Text>
+                )}
                 {nearbyJimnys.map(
                   (owner) => {
-                    const waved =
-                      wavedOwners.includes(
-                        owner.id
-                      );
+                    const waved = owner.friendshipStatus !== "none";
 
                     return (
                       <View
@@ -1662,13 +1631,13 @@ export default function HibernateScreen({
                             styles.avatar
                           }
                         >
-                          <MaterialIcons
-                            name="person"
-                            size={34}
-                            color={
-                              colors.textSecondary
-                            }
-                          />
+                          {owner.profilePhotoURL ? (
+                            <Image source={{ uri: owner.profilePhotoURL }}
+                              style={{ width: 50, height: 50, borderRadius: 25 }} />
+                          ) : (
+                            <MaterialIcons name="person" size={34}
+                              color={colors.textSecondary} />
+                          )}
                         </View>
 
                         <View
@@ -1705,11 +1674,8 @@ export default function HibernateScreen({
                         </View>
 
                         <Pressable
-                          onPress={() =>
-                            waveAtOwner(
-                              owner.id
-                            )
-                          }
+                          disabled={waved || waveBusy === owner.id}
+                          onPress={() => { void waveAtOwner(owner.id); }}
                           style={[
                             styles.waveButton,
                             waved &&
@@ -1721,9 +1687,10 @@ export default function HibernateScreen({
                               styles.waveButtonText
                             }
                           >
-                            {waved
-                              ? "Waved ✓"
-                              : "Wave"}
+                            {owner.friendshipStatus === "friends" ? "Friends ✓"
+                              : owner.friendshipStatus === "sent" ? "Waved ✓"
+                              : owner.friendshipStatus === "incoming" ? "Wave back in Inbox"
+                              : waveBusy === owner.id ? "Sending..." : "Wave"}
                           </Text>
                         </Pressable>
                       </View>

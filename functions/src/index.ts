@@ -46,10 +46,15 @@ export const removeJimnyBackground = onCall(
       );
     }
 
-    const expectedPath =
-      `users/${uid}/passport/jimny-original.jpg`;
+    const expectedFolder =
+  `users/${uid}/passport/`;
 
-    if (storagePath !== expectedPath) {
+    const isValidJimnyPhoto =
+      storagePath.startsWith(expectedFolder) &&
+      storagePath.endsWith(".jpg") &&
+      !storagePath.includes("..");
+
+    if (!isValidJimnyPhoto) {
       throw new HttpsError(
         "permission-denied",
         "You cannot process this image."

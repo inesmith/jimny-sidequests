@@ -69,7 +69,6 @@ import HibernateScreen from "./src/screens/HibernateScreen";
 import CreatePassportScreen from "./src/screens/CreatePassportScreen";
 import MyPassportScreen from "./src/screens/MyPassportScreen";
 import MyProfileScreen from "./src/screens/MyProfileScreen";
-import MyExperiencesScreen from "./src/screens/MyExperiencesScreen";
 
 import useNotifications, {
   type BackendNotificationItem,
@@ -99,8 +98,8 @@ type Screen =
   | "stampDetails"
   | "hibernate"
   | "createPassport"
+  | "editPassport"
   | "myPassport"
-  | "myExperiences"
   | "myProfile"
   | "editProfile";
 
@@ -110,8 +109,7 @@ type UpcomingExperiencesOrigin =
 
 type ExperienceDetailsOrigin =
   | "upcomingExperiences"
-  | "notifications"
-  | "myExperiences";
+  | "notifications";
 
 export default function App() {
   const [screen, setScreen] =
@@ -393,7 +391,6 @@ export default function App() {
     markAllAsRead:
       markAllNotificationsAsRead,
     getExperienceFromNotification,
-    respondToInvite,
   } = useNotifications();
 
   /*
@@ -1329,14 +1326,6 @@ export default function App() {
           onNotificationPress={
             handleNotificationPress
           }
-          onRSVP={async (notification, response) => {
-            try {
-              await respondToInvite(notification as BackendNotificationItem, response);
-            } catch (error) {
-              console.error("Unable to save RSVP:", error);
-              Alert.alert("RSVP unavailable", "We couldn't save your response. Please try again.");
-            }
-          }}
           onExplore={() =>
             setScreen(
               "home"
@@ -1422,23 +1411,6 @@ export default function App() {
           onExperiencePress={
             openExperienceDetails
           }
-        />
-      );
-    }
-
-    if (screen === "myExperiences") {
-      return (
-        <MyExperiencesScreen
-          onBack={openProfile}
-          onExplore={() => setScreen("home")}
-          onAdventures={openAdventures}
-          onPassport={openPassport}
-          onProfile={openProfile}
-          onExperiencePress={(experience) => {
-            setSelectedExperience(experience);
-            setExperienceDetailsBackScreen("myExperiences");
-            setScreen("experienceDetails");
-          }}
         />
       );
     }
@@ -1697,16 +1669,14 @@ export default function App() {
      * CREATE PASSPORT
      */
     if (
-      screen ===
-      "createPassport"
+      screen === "createPassport" || screen === "editPassport"
     ) {
       return (
         <CreatePassportScreen
-          onBack={() =>
-            setScreen(
-              "myProfile"
-            )
-          }
+          onAdventures={openAdventures}
+          onProfile={openProfile}
+          editMode={screen === "editPassport"}
+          onBack={() => setScreen(screen === "editPassport" ? "myPassport" : "myProfile")}
           onExplore={() =>
             setScreen(
               "home"
@@ -1730,6 +1700,7 @@ export default function App() {
     ) {
       return (
         <MyPassportScreen
+          onEditPassport={() => setScreen("editPassport")}
           onBack={() =>
             setScreen(
               "myProfile"
@@ -1794,7 +1765,6 @@ export default function App() {
           onMyAdventures={
             openMyAdventures
           }
-          onMyExperiences={() => setScreen("myExperiences")}
 
           onPassport={
             openPassport

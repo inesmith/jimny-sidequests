@@ -21,6 +21,9 @@ import {
   getDoc,
   serverTimestamp,
   setDoc,
+  collection,
+  getDocs,
+  writeBatch,
 } from "firebase/firestore";
 
 import {
@@ -29,12 +32,11 @@ import {
   uploadBytes,
 } from "firebase/storage";
 
-import { httpsCallable } from "firebase/functions";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 import {
   auth,
   db,
-  functions,
   storage,
 } from "../firebase/firebase";
 import { colors, fonts, spacing } from "../theme/theme";
@@ -45,6 +47,7 @@ type CreatePassportScreenProps = {
   onAdventures?: () => void;
   onProfile?: () => void;
   onCreatePassport?: () => void;
+  editMode?: boolean;
 };
 
 export default function CreatePassportScreen({
@@ -53,6 +56,7 @@ export default function CreatePassportScreen({
   onAdventures,
   onProfile,
   onCreatePassport,
+  editMode = false,
 }: CreatePassportScreenProps) {
   const [ownerName, setOwnerName] = useState("");
   const [homeLocation, setHomeLocation] = useState("");
@@ -77,6 +81,9 @@ export default function CreatePassportScreen({
 
   const [isCreating, setIsCreating] =
     useState(false);
+  const [savedPassportData, setExistingPassport] = useState<any>(null);
+  const [isNewJimny, setIsNewJimny] = useState(false);
+  const [existingJimnyPhotoURL, setExistingJimnyPhotoURL] = useState<string | null>(null);
 
   /*
    * LOAD EXISTING PROFILE + PRIVATE HOME LOCATION
@@ -149,6 +156,22 @@ export default function CreatePassportScreen({
               privateData.homeLocation
                 .formattedAddress
             );
+          }
+        }
+        if (editMode) {
+          const passportSnapshot = await getDoc(doc(db, "passports", user.uid));
+          if (passportSnapshot.exists()) {
+            const saved = passportSnapshot.data();
+            const vehicle = saved.vehicle ?? {};
+            setExistingPassport(saved);
+            setOwnerName(saved.ownerName || userSnapshot.data()?.fullName || "");
+            setMake(vehicle.make || "");
+            setModel(vehicle.model || "");
+            setVehicleYear(vehicle.year ? String(vehicle.year) : "");
+            setColour(vehicle.colour || "");
+            setVehicleNickname(vehicle.nickname || "");
+            setExistingJimnyPhotoURL(vehicle.photoURL || null);
+            if (saved.profilePhotoURL) setExistingProfilePhotoURL(saved.profilePhotoURL);
           }
         }
       } catch (error) {
@@ -349,9 +372,7 @@ export default function CreatePassportScreen({
             passportRef
           );
 
-        if (
-          existingPassport.exists()
-        ) {
+        if (!editMode && existingPassport.exists()) {
           Alert.alert(
             "Passport already created",
             "You already have an Adventure Passport."
@@ -365,7 +386,8 @@ export default function CreatePassportScreen({
           existingProfilePhotoURL ||
           "";
 
-        let jimnyPhotoURL = "";
+        let jimnyPhotoURL = editMode && !isNewJimny
+          ? (savedPassportData?.vehicle?.photoURL || "") : "";
 
         /*
          * PROFILE PHOTO
@@ -405,55 +427,47 @@ export default function CreatePassportScreen({
          * its background. The passport uses the
          * processed transparent PNG.
          */
-        let originalJimnyPhotoURL = "";
+        let originalJimnyPhotoURL = editMode && !isNewJimny
+          ? (savedPassportData?.vehicle?.originalPhotoURL || "") : "";
 
         if (jimnyPhotoUri) {
-          const originalStoragePath =
-            `users/${user.uid}/passport/jimny-original.jpg`;
+          const fileName = `jimny-${Date.now()}.jpg`;
+          const originalStoragePath = `users/${user.uid}/passport/${fileName}`;
 
           originalJimnyPhotoURL =
             await uploadPhoto(
               jimnyPhotoUri,
               user.uid,
-              "jimny-original.jpg"
+              fileName
             );
 
-          const removeBackground =
-            httpsCallable<
-              {
-                storagePath: string;
-              },
-              {
-                processedPath: string;
-              }
-            >(
-              functions,
-              "removeJimnyBackground"
-            );
+          // Background removal is optional. If the Cloud Function is
+          // missing or unavailable, the original uploaded photo is used.
+          jimnyPhotoURL = originalJimnyPhotoURL;
 
-          const processedResult =
-            await removeBackground({
-              storagePath:
-                originalStoragePath,
+          try {
+            const removeBackground = httpsCallable<
+              { storagePath: string },
+              { processedPath: string }
+>(getFunctions(auth.app, "africa-south1"), "removeJimnyBackground");
+
+            const processedResult = await removeBackground({
+              storagePath: originalStoragePath,
             });
 
-          const processedPath =
-            processedResult.data
-              ?.processedPath;
+            const processedPath = processedResult.data?.processedPath;
 
-          if (!processedPath) {
-            throw new Error(
-              "The processed Jimny photo path was not returned."
+            if (processedPath) {
+              jimnyPhotoURL = await getDownloadURL(
+                ref(storage, processedPath)
+              );
+            }
+          } catch (backgroundError) {
+            console.warn(
+              "Jimny background removal unavailable; using original photo:",
+              backgroundError
             );
           }
-
-          jimnyPhotoURL =
-            await getDownloadURL(
-              ref(
-                storage,
-                processedPath
-              )
-            );
         }
 
         const passportNumber =
@@ -471,6 +485,53 @@ export default function CreatePassportScreen({
          * The address remains inside
          * privateUserData.
          */
+        const newVehicle = {
+          make: make.trim(), model: model.trim(), year: numericYear,
+          colour: colour.trim(), nickname: vehicleNickname.trim() || null,
+          photoURL: jimnyPhotoURL || null,
+          originalPhotoURL: originalJimnyPhotoURL || null,
+        };
+
+        if (editMode) {
+          if (!savedPassportData) throw new Error("Passport not found. Please reopen the screen.");
+          if (isNewJimny) {
+            // Archive the old vehicle and its quest documents before resetting progress.
+            // The entire change is one atomic Firestore batch.
+            const quests = await getDocs(collection(db, "users", user.uid, "quests"));
+            if (quests.size > 450) throw new Error("Too many quests to archive safely. Contact support.");
+            const archiveId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            const batch = writeBatch(db);
+            batch.set(doc(db, "users", user.uid, "vehicleArchives", archiveId), {
+              ...savedPassportData,
+              archivedAt: serverTimestamp(),
+              quests: quests.docs.map(q => ({ id: q.id, ...q.data() })),
+            });
+            quests.docs.forEach(q => batch.delete(q.ref));
+            batch.set(passportRef, {
+              uid: user.uid,
+              passportNumber: `${generatePassportNumber(user.uid)}-${Date.now().toString(36).toUpperCase()}`,
+              ownerName: ownerName.trim(), profilePhotoURL: finalProfilePhotoURL || null,
+              vehicle: newVehicle, stamps: [], stampCount: 0,
+              firstAdventureAt: null, lastAdventureAt: null,
+              createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+            });
+            await batch.commit();
+          } else {
+            // Merge only editable fields: never overwrite stamps, passport number or history.
+            await setDoc(passportRef, {
+              ownerName: ownerName.trim(),
+              profilePhotoURL: finalProfilePhotoURL || null,
+              vehicle: newVehicle, updatedAt: serverTimestamp(),
+            }, { merge: true });
+          }
+          Alert.alert("Passport updated!", isNewJimny
+            ? "Your previous Jimny's passport is archived. Your new Jimny starts with zero stamps."
+            : "Your passport details have been saved.", [
+            { text: "View Passport", onPress: () => onCreatePassport?.() },
+          ]);
+          return;
+        }
+
         await setDoc(
           passportRef,
           {
@@ -566,16 +627,6 @@ export default function CreatePassportScreen({
             "Firebase couldn't upload the photo. Please check the Storage permissions.";
         }
 
-        if (
-          typeof error?.code === "string" &&
-          error.code.startsWith(
-            "functions/"
-          )
-        ) {
-          message =
-            "We couldn't remove the Jimny photo background. Please try again.";
-        }
-
         Alert.alert(
           "Unable to create passport",
           message
@@ -584,6 +635,21 @@ export default function CreatePassportScreen({
         setIsCreating(false);
       }
     };
+
+  const confirmSave = () => {
+    if (!editMode || !isNewJimny) {
+      void handleCreatePassport();
+      return;
+    }
+    Alert.alert(
+      "Start a new Jimny passport?",
+      "Your current passport and quest history will be archived. The new Jimny starts with zero stamps and zero completed quests. This cannot be undone from the app.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Archive & Start New", style: "destructive", onPress: () => void handleCreatePassport() },
+      ]
+    );
+  };
 
   const canCreatePassport =
     !isLoadingProfile &&
@@ -655,7 +721,7 @@ export default function CreatePassportScreen({
                 styles.headerTitle
               }
             >
-              Create Passport
+              {editMode ? "Edit Passport" : "Create Passport"}
             </Text>
 
             <View
@@ -1172,10 +1238,10 @@ export default function CreatePassportScreen({
                     isCreating
                   }
                 >
-                  {jimnyPhotoUri ? (
+                  {(jimnyPhotoUri || (editMode && !isNewJimny && existingJimnyPhotoURL)) ? (
                     <Image
                       source={{
-                        uri: jimnyPhotoUri,
+                        uri: jimnyPhotoUri || existingJimnyPhotoURL || "",
                       }}
                       style={
                         styles.vehiclePhotoImage
@@ -1252,6 +1318,27 @@ export default function CreatePassportScreen({
                 </Text>
               </View>
 
+              {editMode && (
+                <View style={{ padding: 16, borderWidth: 1, borderColor: colors.green, borderRadius: 10, marginBottom: 18 }}>
+                  <Text style={{ fontFamily: fonts.extraBold, color: colors.text, fontSize: 16, marginBottom: 12 }}>
+                    Are you still driving the same Jimny?
+                  </Text>
+                  <Pressable onPress={() => setIsNewJimny(false)} style={{ paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
+                    <MaterialIcons name={isNewJimny ? "radio-button-unchecked" : "radio-button-checked"} size={23} color={colors.green} />
+                    <Text style={{ color: colors.text, marginLeft: 10, flex: 1 }}>Yes, same Jimny — keep all stamps and quests</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setIsNewJimny(true)} style={{ paddingVertical: 10, flexDirection: "row", alignItems: "center" }}>
+                    <MaterialIcons name={isNewJimny ? "radio-button-checked" : "radio-button-unchecked"} size={23} color={colors.green} />
+                    <Text style={{ color: colors.text, marginLeft: 10, flex: 1 }}>No, I have a new Jimny</Text>
+                  </Pressable>
+                  {isNewJimny && (
+                    <Text style={{ color: colors.red, marginTop: 8 }}>
+                      Your old passport and quest history will be archived. The new Jimny starts with zero stamps and zero completed quests.
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* PASSPORT NUMBER */}
               <View
                 style={
@@ -1263,8 +1350,7 @@ export default function CreatePassportScreen({
                     styles.passportNumberTitle
                   }
                 >
-                  Your passport number
-                  is on us
+                  {editMode ? "Your Adventure Passport" : "Your passport number is on us"}
                 </Text>
 
                 <Text
@@ -1272,12 +1358,9 @@ export default function CreatePassportScreen({
                     styles.passportNumberBody
                   }
                 >
-                  A digital passport
-                  number and date of
-                  issue are generated
-                  when you create it.
-                  Your booklet starts
-                  with 0 stamps.
+                  {editMode
+                    ? (isNewJimny ? "Your new Jimny will receive a new passport number and start with zero stamps." : "Your existing passport number and stamps will be kept.")
+                    : "A digital passport number and date of issue are generated when you create it. Your booklet starts with 0 stamps."}
                 </Text>
               </View>
 
@@ -1299,7 +1382,7 @@ export default function CreatePassportScreen({
                   !canCreatePassport
                 }
                 onPress={
-                  handleCreatePassport
+                  confirmSave
                 }
               >
                 <Text
@@ -1308,8 +1391,8 @@ export default function CreatePassportScreen({
                   }
                 >
                   {isCreating
-                    ? "CREATING PASSPORT..."
-                    : "CREATE PASSPORT"}
+                    ? (editMode ? "SAVING CHANGES..." : "CREATING PASSPORT...")
+                    : editMode ? "SAVE CHANGES" : "CREATE PASSPORT"}
                 </Text>
               </Pressable>
 

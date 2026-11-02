@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   Pressable,
@@ -21,7 +22,7 @@ import {
 
 import { auth, db } from "../firebase/firebase";
 import { colors, fonts } from "../theme/theme";
-import BottomNav from "../components/BottomNav";
+import { allQuests } from "../data/quests";
 
 /*
  * PASSPORT BACKGROUNDS
@@ -48,6 +49,7 @@ type MyPassportScreenProps = {
   onExplore?: () => void;
   onAdventures?: () => void;
   onProfile?: () => void;
+  onEditPassport?: () => void;
 };
 
 type PassportVehicle = {
@@ -86,43 +88,21 @@ type StampSlot = {
   name: string;
 };
 
-const PASSPORT_STAMP_TOTAL = 9;
+// Keep passport slots in sync with the actual Side Quests.
+// Each quest gets its own permanent slot, identified by its real quest ID.
+const stampSlots: StampSlot[] = allQuests.map((quest) => ({
+  id: quest.id,
+  name: quest.stampTitle || quest.title,
+}));
 
-const stampSlots: StampSlot[] = [
-  {
-    id: "get-it-dirty",
-    name: "Get It Dirty",
-  },
-  {
-    id: "convoy-coffee",
-    name: "Convoy & Coffee",
-  },
-  {
-    id: "sleep-under-stars",
-    name: "Stars Night",
-  },
-  {
-    id: "parking-buddies",
-    name: "Park Buddies",
-  },
-  {
-    id: "spot-the-wild",
-    name: "Spot The Wild",
-  },
-  {
-    id: "find-your-twin",
-    name: "Twin Finder",
-  },
-  { id: "future-stamp-7", name: "Coming Soon" },
-  { id: "future-stamp-8", name: "Coming Soon" },
-  { id: "future-stamp-9", name: "Coming Soon" },
-];
+const PASSPORT_STAMP_TOTAL = stampSlots.length;
 
 export default function MyPassportScreen({
   onBack,
   onExplore,
   onAdventures,
   onProfile,
+  onEditPassport,
 }: MyPassportScreenProps) {
   const [passport, setPassport] =
     useState<PassportData | null>(null);
@@ -304,7 +284,7 @@ export default function MyPassportScreen({
         edges={["top", "bottom"]}
       >
         <View style={styles.screen}>
-          <Header onBack={onBack} />
+          <Header onBack={onBack} onEditPassport={onEditPassport} />
 
           <View style={styles.errorContainer}>
             <MaterialIcons
@@ -339,7 +319,7 @@ export default function MyPassportScreen({
       edges={["top", "bottom"]}
     >
       <View style={styles.screen}>
-        <Header onBack={onBack} />
+        <Header onBack={onBack} onEditPassport={onEditPassport} />
 
         <View
           style={styles.passportViewport}
@@ -605,13 +585,74 @@ export default function MyPassportScreen({
         {/* BOTTOM NAVIGATION */}
         {/* ================================= */}
 
-        <BottomNav
-          selected="passport"
-          onExplore={onExplore}
-          onHibernate={onAdventures}
-          onPassport={() => {}}
-          onProfile={onProfile}
-        />
+        <View style={styles.bottomNav}>
+          <Pressable
+            style={styles.navItem}
+            onPress={onExplore}
+          >
+            <MaterialIcons
+              name="explore"
+              size={27}
+              color={colors.text}
+            />
+
+            <Text style={styles.navText}>
+              Explore
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.navItem}
+            onPress={onAdventures}
+          >
+            <MaterialIcons
+              name="monitor-heart"
+              size={28}
+              color={colors.text}
+            />
+
+            <Text style={styles.navText}>
+              Hibernate
+            </Text>
+          </Pressable>
+
+          <View
+            style={[
+              styles.navItem,
+              styles.navItemSelected,
+            ]}
+          >
+            <MaterialIcons
+              name="menu-book"
+              size={27}
+              color={colors.green}
+            />
+
+            <Text
+              style={[
+                styles.navText,
+                styles.navTextSelected,
+              ]}
+            >
+              Passport
+            </Text>
+          </View>
+
+          <Pressable
+            style={styles.navItem}
+            onPress={onProfile}
+          >
+            <MaterialIcons
+              name="account-circle"
+              size={28}
+              color={colors.text}
+            />
+
+            <Text style={styles.navText}>
+              My Profile
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -622,8 +663,10 @@ export default function MyPassportScreen({
  */
 function Header({
   onBack,
+  onEditPassport,
 }: {
   onBack?: () => void;
+  onEditPassport?: () => void;
 }) {
   return (
     <View style={styles.header}>
@@ -652,6 +695,11 @@ function Header({
           styles.headerSide,
           styles.headerRight,
         ]}
+        onPress={() => Alert.alert("Passport options", "What would you like to do?", [
+          { text: "Edit Passport", onPress: onEditPassport },
+          { text: "Cancel", style: "cancel" },
+        ])}
+        accessibilityLabel="Passport options"
         hitSlop={10}
       >
         <MaterialIcons
@@ -744,9 +792,9 @@ function StampPosition({
 
       <Text
         style={styles.stampName}
-        numberOfLines={1}
+        numberOfLines={2}
         adjustsFontSizeToFit
-        minimumFontScale={0.75}
+        minimumFontScale={0.7}
       >
         {slot.name}
       </Text>
@@ -1250,7 +1298,7 @@ const styles =
         fonts.semiBold,
 
       fontSize: 11,
-      lineHeight: 14,
+      lineHeight: 13,
 
       color: colors.text,
     },
@@ -1362,32 +1410,6 @@ const styles =
     navItemSelected: {
       borderTopWidth: 2,
       borderTopColor: colors.green,
-    },
-
-    navImage: {
-      width: 28,
-      height: 28,
-      tintColor: colors.text,
-    },
-
-    navImageSelected: {
-      tintColor: colors.green,
-    },
-
-    navProfileCircle: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      borderWidth: 2,
-      borderColor: colors.text,
-      overflow: "hidden",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-
-    navProfileImage: {
-      width: "100%",
-      height: "100%",
     },
 
     navText: {

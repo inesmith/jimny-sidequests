@@ -5,6 +5,7 @@ import {
   Image,
   LayoutChangeEvent,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -633,13 +634,20 @@ export default function MyProfileScreen({
           </Pressable>
         </View>
 
-        <View style={styles.scrollView} onLayout={handleAvailableLayout}>
+        <ScrollView
+          style={styles.scrollView}
+          onLayout={handleAvailableLayout}
+          scrollEnabled={!hasPassport}
+          showsVerticalScrollIndicator={false}
+          bounces={!hasPassport}
+          contentContainerStyle={!hasPassport ? styles.scrollContent : undefined}
+        >
           <View
             onLayout={handleContentLayout}
             style={[
               styles.content,
               {
-                transform: [{ scale: contentScale }],
+                transform: [{ scale: hasPassport ? contentScale : 1 }],
                 transformOrigin: "top center",
               },
             ]}
@@ -943,7 +951,7 @@ export default function MyProfileScreen({
               </>
             )}
           </View>
-        </View>
+        </ScrollView>
 
         {/* SHARED BOTTOM NAVIGATION */}
         <BottomNav
@@ -1200,6 +1208,10 @@ const styles =
     scrollView: {
       flex: 1,
       overflow: "hidden",
+    },
+
+    scrollContent: {
+      paddingBottom: 28,
     },
 
     scrollContent: {
