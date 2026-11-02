@@ -25,6 +25,7 @@ import * as Location from "expo-location";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 import { colors, fonts } from "../theme/theme";
+import { findCuratedDestination, type CuratedDestination } from "../data/curatedDestinations";
 import BottomNav from "../components/BottomNav";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -64,15 +65,31 @@ type TrailResearchResult = {
 
 const getTrailResearch = httpsCallable<{placeId: string}, TrailResearchResult>(functions, "getTrailResearch");
 
+// Curated information enriches existing Google Places results only.
+function primaryTrailDetails(curated: CuratedDestination | undefined) {
+  if (!curated) return { distance: 0, distanceLabel: "Not listed", duration: "Not verified", terrain: "Not verified" };
+  const routes = curated.trails;
+  const primary = routes.find((route) => route.distanceKm != null || route.distanceLabel) ?? routes[0];
+  const distance = primary?.distanceKm ?? 0;
+  const distanceLabel = routes.length > 1
+    ? `${routes.length} routes` : (primary?.distanceLabel ?? (distance > 0 ? `${distance} km` : "Not listed"));
+  const duration = routes.length > 1
+    ? "See routes" : (primary?.duration ?? "Not verified");
+  const terrain = (primary?.terrain?.length ? primary.terrain : curated.terrain).slice(0, 2).join(" / ") || "Not verified";
+  return { distance, distanceLabel, duration, terrain };
+}
+
 type Trail = {
   id: string;
   name: string;
   trailDistance: number;
+  trailDistanceLabel: string;
   duration: string;
   terrain: string;
   difficulty: TrailDifficulty;
   latitude: number;
   longitude: number;
+  image?: number;
 };
 
 type NearbyJimny = {
@@ -113,11 +130,10 @@ type GoogleTrailPlace = {
 
 // Filter obvious retailers and known false positives, but don't require
 // "4x4" in the name: genuine trails can have names such as "De Wildt".
-const EXCLUDED_PLACE_NAMES = /\b(?:4\s*[x×]\s*4\s*mega\s*world|big\s*red\s*barn|accessories|spares|fitment|workshop|dealership|tyres|products|industries|tours|adventures|club|quad|office|biking|mbt|hiking|tires|parts\s*shop|equipment\s*shop)\b/i;
+const EXCLUDED_PLACE_NAMES = /\b(?:4\s*[x×]\s*4\s*mega\s*world|big\s*red\s*barn|krook & king|intemba bus stop|matobo national park|ford|theme|legends 4x4 trail|four wheel drive club|wolwespruit|Groenkloof Nature Reserve|Thunder Park RC Venue|mx|Echo 4x4 Centre|De Wildt Nature Hike and Picnic|Buggy Parks|Wild West Enduro Track|GZ Adventures Lanseria|Hollybrooke Adventure Farm|Saddle Creek Adventures|Dirt Bronco|Adventure Freaks|Lion & safari|Loerkop Rustenburg|accessories|acrobranch|direct|spares|fitment|workshop|dealership|tyres|products|industries|tours|caravans|quad|office|biking|mbt|hiking|tires|parts\s*shop|equipment\s*shop)\b/i;
 const EXCLUDED_NON_TRAILS =/\b(?:acrobranch|caravan|caravans|camping\s+equipment|adventure\s+direct|zipline|zip\s*line|tree\s*top|treetop|paintball|quad\s*bike\s*rental)\b/i;
 const RETAIL_NAME = /\b(?:shop|store|outlet|showroom|supplies|accessories|fitment|dealership|spares)\b/i;
 const STRONG_TRAIL_NAME = /\b(?:4\s*[x×]\s*4|4wd|off[ -]?road|trail|trails|route|routes|adventure\s*park|obstacle|rock\s*crawl)\b/i;
-
 
 function isLikelyOffroadDestination(place: GoogleTrailPlace): boolean {
   const name = place.displayName?.text ?? "";
@@ -308,6 +324,8 @@ export default function HibernateScreen({
   const [trailDetails, setTrailDetails] = useState<Record<string, TrailResearchResult>>({});
   const [trailDetailsLoading, setTrailDetailsLoading] = useState<string | null>(null);
   const [trailDetailsErrors, setTrailDetailsErrors] = useState<Record<string, string>>({});
+  const [destinationPhotos, setDestinationPhotos] = useState<Record<string, {uri: string; attribution?: string}>>({});
+  const photoRequests = useRef(new Set<string>());
 
   const toggleTrailDetails = async (trail: Trail, retry = false) => {
     if (!retry && expandedTrail === trail.id) {
@@ -315,6 +333,7 @@ export default function HibernateScreen({
       return;
     }
     setExpandedTrail(trail.id);
+    if (findCuratedDestination(trail.name)) return;
     if (trailDetails[trail.id] || trailDetailsLoading === trail.id) return;
     setTrailDetailsLoading(trail.id);
     setTrailDetailsErrors((previous) => ({...previous, [trail.id]: ""}));
@@ -545,13 +564,17 @@ export default function HibernateScreen({
               if (!place.id || !place.displayName?.text || lat == null || lng == null) continue;
               if (!isLikelyOffroadDestination(place)) continue;
               if (calculateDistanceKm(latitude, longitude, lat, lng) > travelRadius) continue;
+              const curated = findCuratedDestination(place.displayName.text);
+              const summary = primaryTrailDetails(curated);
               found.set(place.id, {
                 id: place.id,
                 name: place.displayName.text,
-                trailDistance: 0,
-                duration: "Not listed",
-                terrain: "Not verified",
-                difficulty: "Unrated",
+                trailDistance: summary.distance,
+                trailDistanceLabel: summary.distanceLabel,
+                duration: summary.duration,
+                terrain: summary.terrain,
+                difficulty: curated?.difficulty ?? "Unrated",
+                image: curated?.image,
                 latitude: lat,
                 longitude: lng,
               });
@@ -621,6 +644,40 @@ export default function HibernateScreen({
       .filter((trail) => trail.distanceFromUser <= travelRadius)
       .sort((a, b) => a.distanceFromUser - b.distanceFromUser);
   }, [discoveredTrails, userLocation, travelRadius]);
+
+  // Fetch a small, bounded number of Google Places photographs for live results.
+  // No destinations are inserted here: the radius-filtered Google search remains authoritative.
+  useEffect(() => {
+    if (!PLACES_API_KEY) return;
+    const missing = visibleTrails
+      .filter((trail) => !trail.image && !destinationPhotos[trail.id] && !photoRequests.current.has(trail.id))
+      .slice(0, 8);
+    for (const trail of missing) {
+      photoRequests.current.add(trail.id);
+      void (async () => {
+        try {
+          const response = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(trail.id)}?fields=photos`, {
+            headers: {"X-Goog-Api-Key": PLACES_API_KEY},
+          });
+          if (!response.ok) return;
+          const data: {photos?: {name: string; authorAttributions?: {displayName?: string}[]}[]} = await response.json();
+          const photo = data.photos?.[0];
+          if (!photo?.name) return;
+          const mediaResponse = await fetch(`https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&skipHttpRedirect=true&key=${encodeURIComponent(PLACES_API_KEY)}`);
+          if (!mediaResponse.ok) return;
+          const media: {photoUri?: string} = await mediaResponse.json();
+          if (media.photoUri) {
+            setDestinationPhotos((previous) => ({...previous, [trail.id]: {
+              uri: media.photoUri!,
+              attribution: photo.authorAttributions?.map((a) => a.displayName).filter(Boolean).join(", "),
+            }}));
+          }
+        } catch (error) {
+          console.warn("Destination photo unavailable:", error);
+        }
+      })();
+    }
+  }, [visibleTrails, destinationPhotos]);
 
   const nearbyJimnys =
     useMemo(() => {
@@ -1219,7 +1276,7 @@ export default function HibernateScreen({
                                     styles.trailSummary
                                   }
                                 >
-                                  {trail.trailDistance > 0 ? `${trail.trailDistance} km` : "Distance not listed"} •{" "}
+                                  {trail.trailDistanceLabel} •{" "}
                                   {
                                     trail.duration
                                   }
@@ -1261,6 +1318,26 @@ export default function HibernateScreen({
                               </View>
                             </View>
 
+                            {(trail.image || destinationPhotos[trail.id]) ? (
+                              <View style={styles.destinationPhotoWrap}>
+                                <Image
+                                  source={trail.image ?? {uri: destinationPhotos[trail.id].uri}}
+                                  style={styles.destinationPhoto}
+                                  resizeMode="cover"
+                                />
+                                {!!destinationPhotos[trail.id]?.attribution && (
+                                  <Text style={styles.photoAttribution}>
+                                    Photo: {destinationPhotos[trail.id].attribution}
+                                  </Text>
+                                )}
+                              </View>
+                            ) : (
+                              <View style={styles.destinationPhotoPlaceholder}>
+                                <MaterialIcons name="landscape" size={30} color={colors.green} />
+                                <Text style={styles.expandedText}>Destination photo unavailable</Text>
+                              </View>
+                            )}
+
                             <View
                               style={
                                 styles.metricsRow
@@ -1268,7 +1345,7 @@ export default function HibernateScreen({
                             >
                               <MetricBox
                                 label="Distance"
-                                value={trail.trailDistance > 0 ? `${trail.trailDistance} km` : "Not listed"}
+                                value={trail.trailDistanceLabel}
                               />
 
                               <MetricBox
@@ -1355,19 +1432,6 @@ export default function HibernateScreen({
                                 )}
                                 {trailDetails[trail.id] && (
                                   <View style={{gap: 8, marginBottom: 14}}>
-                                    <Text style={styles.expandedText}>
-                                      {trailDetails[trail.id].trailLengthKm != null
-                                        ? `Trail length: ${trailDetails[trail.id].trailLengthKm} km`
-                                        : "Trail length: Not verified"}
-                                    </Text>
-                                    <Text style={styles.expandedText}>
-                                      {`Duration: ${trailDetails[trail.id].estimatedDuration ?? "Not verified"}`}
-                                    </Text>
-                                    <Text style={styles.expandedText}>
-                                      {`Terrain: ${trailDetails[trail.id].terrain.length
-                                        ? trailDetails[trail.id].terrain.join(", ")
-                                        : "Not verified"}`}
-                                    </Text>
                                     {trailDetails[trail.id].website ? (
                                       <Pressable onPress={() => { void openDestinationLink(trailDetails[trail.id].website!); }}>
                                         <Text style={styles.detailsText}>Visit destination website ↗</Text>
@@ -1389,6 +1453,58 @@ export default function HibernateScreen({
                                     )}
                                   </View>
                                 )}
+                                {(() => {
+                                  const curated = findCuratedDestination(trail.name);
+                                  if (!curated) return null;
+                                  return (
+                                    <View style={{gap: 7, marginBottom: 14}}>
+                                      <Text style={styles.expandedText}>{curated.summary}</Text>
+                                      <Text style={styles.detailsText}>Trails and driving areas</Text>
+                                      {curated.trails.map((route) => (
+                                        <View key={route.id} style={styles.curatedRoute}>
+                                          <Text style={styles.curatedRouteTitle}>{route.name}</Text>
+                                          <Text style={styles.expandedText}>
+                                            {route.distanceLabel ?? (route.distanceKm != null ? `${route.distanceKm} km` : "Distance not verified")}
+                                            {" • "}{route.duration ?? "Duration not verified"}
+                                          </Text>
+                                          <Text style={styles.expandedText}>
+                                            {route.terrain.length ? route.terrain.join(", ") : "Terrain not verified"}
+                                            {" • "}{route.difficulty}
+                                            {route.grade ? ` (${route.grade})` : ""}
+                                          </Text>
+                                          {!!route.description && <Text style={styles.expandedText}>{route.description}</Text>}
+                                          {route.notes?.map((note, index) => (
+                                            <Text key={`${route.id}-note-${index}`} style={styles.expandedText}>• {note}</Text>
+                                          ))}
+                                        </View>
+                                      ))}
+                                      {!!curated.priceNote && (
+                                        <Text style={styles.expandedText}>{curated.priceNote}</Text>
+                                      )}
+                                      {!!curated.amenities?.length && (
+                                        <Text style={styles.expandedText}>Facilities: {curated.amenities.join(", ")}</Text>
+                                      )}
+                                      {curated.visitorNotes?.map((note, index) => (
+                                        <Text key={`${curated.id}-visitor-${index}`} style={styles.expandedText}>• {note}</Text>
+                                      ))}
+                                      {!!curated.phone && (
+                                        <Pressable onPress={() => { void openDestinationLink(`tel:${curated.phone!.replace(/\s/g, "")}`); }}>
+                                          <Text style={styles.detailsText}>Call: {curated.phone}</Text>
+                                        </Pressable>
+                                      )}
+                                      {!!curated.email && (
+                                        <Pressable onPress={() => { void openDestinationLink(`mailto:${curated.email}`); }}>
+                                          <Text style={styles.detailsText}>Email: {curated.email}</Text>
+                                        </Pressable>
+                                      )}
+                                      {!!curated.website && !trailDetails[trail.id]?.website && (
+                                        <Pressable onPress={() => { void openDestinationLink(curated.website!); }}>
+                                          <Text style={styles.detailsText}>Visit destination website ↗</Text>
+                                        </Pressable>
+                                      )}
+                                    </View>
+                                  );
+                                })()}
                                 {isQuestMode ? (
                                   <>
                                     <Text
@@ -1997,6 +2113,31 @@ const styles = StyleSheet.create({
     gap: 13,
   },
 
+  destinationPhotoWrap: {
+    marginTop: 12,
+    borderRadius: 7,
+    overflow: "hidden",
+  },
+  destinationPhoto: {
+    width: "100%",
+    height: 150,
+    backgroundColor: "#E8E8E2",
+  },
+  destinationPhotoPlaceholder: {
+    height: 150,
+    marginTop: 12,
+    borderRadius: 7,
+    backgroundColor: "#E8E8E2",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  photoAttribution: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
   trailCard: {
     width: "100%",
     padding: 14,
@@ -2129,6 +2270,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
     fontSize: 12,
     color: colors.green,
+  },
+
+  curatedRoute: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    borderRadius: 6,
+    gap: 4,
+    marginBottom: 4,
+  },
+
+  curatedRouteTitle: {
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    color: colors.text,
   },
 
   expandedArea: {
