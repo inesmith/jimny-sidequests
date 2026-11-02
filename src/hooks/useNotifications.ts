@@ -21,6 +21,7 @@ import {
   setDoc,
   Timestamp,
   writeBatch,
+  where,
 } from "firebase/firestore";
 
 import {
@@ -83,6 +84,34 @@ export default function useNotifications() {
   >({});
 
   const [directNotifications, setDirectNotifications] = useState<BackendNotificationItem[]>([]);
+
+  const [acceptedWaveIds, setAcceptedWaveIds] = useState<string[]>([]);
+
+useEffect(() => {
+  if (!currentUser) {
+    setAcceptedWaveIds([]);
+    return;
+  }
+
+  const wavesQuery = query(
+    collection(db, "waves"),
+    where("recipientId", "==", currentUser.uid)
+  );
+
+  return onSnapshot(
+    wavesQuery,
+    (snapshot) => {
+      setAcceptedWaveIds(
+        snapshot.docs
+          .filter((wave) => wave.data().status === "friends")
+          .map((wave) => wave.id)
+      );
+    },
+    (error) => {
+      console.error("Unable to track accepted waves:", error);
+    }
+  );
+}, [currentUser]);
 
   const [
     isLoadingNotifications,
@@ -326,7 +355,10 @@ export default function useNotifications() {
                 : "eventUpdate",
           waveId: typeof data.waveId === "string" ? data.waveId : undefined,
           senderId: typeof data.senderId === "string" ? data.senderId : undefined,
-          waveAccepted: data.type === "waveAccepted",
+          waveAccepted:
+            data.type === "waveAccepted" ||
+            (typeof data.waveId === "string" &&
+              acceptedWaveIds.includes(data.waveId)),
           label: typeof data.label === "string" ? data.label : "MEET & GREET",
           title: typeof data.title === "string" ? data.title : "Meet & Greet",
           body: typeof data.body === "string" ? data.body : "",
@@ -340,7 +372,7 @@ export default function useNotifications() {
       });
       setDirectNotifications(items);
     }, (error) => console.error("Unable to load personal notifications:", error));
-  }, [currentUser, notificationStates]);
+  }, [currentUser, notificationStates, acceptedWaveIds]);
 
   /*
    * TURN BACKEND EXPERIENCES

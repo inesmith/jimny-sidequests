@@ -590,13 +590,29 @@ export default function App() {
         if (backendNotification.waveAccepted) {
           Alert.alert(
             "Jimny Friends! 🚙",
-            "You're now connected with this Jimny owner."
+            "You're already friends with this Jimny owner."
           );
           return;
         }
 
-        if (!backendNotification.senderId) {
-          Alert.alert("Wave unavailable", "The sender information is missing.");
+        if (!backendNotification.senderId || !backendNotification.waveId) {
+          Alert.alert(
+            "Wave unavailable",
+            "The Wave information is missing."
+          );
+          return;
+        }
+
+        const waveSnapshot = await getDoc(
+          doc(db, "waves", backendNotification.waveId)
+        );
+
+        if (waveSnapshot.exists() &&
+            waveSnapshot.data().status === "friends") {
+          Alert.alert(
+            "Jimny Friends! 🚙",
+            "You're already friends with this Jimny owner."
+          );
           return;
         }
 
@@ -608,7 +624,7 @@ export default function App() {
         );
 
         return;
-      }
+    }
 
         /*
          * EXPERIENCE / EVENT UPDATE

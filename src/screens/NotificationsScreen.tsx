@@ -137,12 +137,6 @@ export default function NotificationsScreen({
                 {unreadCount > 0 && (
                   <View style={styles.unreadDot} />
                 )}
-
-                <Text style={styles.unreadCount}>
-                  {unreadCount > 0
-                    ? `${unreadCount} unread`
-                    : "All caught up"}
-                </Text>
               </View>
 
               {unreadCount > 0 && (
@@ -482,7 +476,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 9,
+    marginTop: -30,
   },
 
   unreadLeft: {
