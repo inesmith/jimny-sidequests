@@ -482,6 +482,9 @@ export default function StampDetailsScreen({
               {completedDate}
             </Text>
 
+            {/* Show drive details only when an actual timed drive was recorded. */}
+            {stamp.driveStartedAt && stamp.driveStoppedAt ? (
+              <>
             {/* ================================= */}
             {/* QUEST TRACKER SNAPSHOT */}
             {/* ================================= */}
@@ -550,6 +553,9 @@ export default function StampDetailsScreen({
                 </Text>
               </View>
             </View>
+
+              </>
+            ) : null}
 
             {/* ================================= */}
             {/* ADVENTURE MEMORY */}

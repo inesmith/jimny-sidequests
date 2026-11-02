@@ -2,6 +2,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  TextInput,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -43,6 +44,7 @@ export type QuestProgress = {
   completedSteps: number[];
   startedAt: Timestamp | null;
   selectedTrail: string | null;
+  selectedLocation?: string | null;
 
   driveStatus:
     | "ready"
@@ -182,6 +184,75 @@ export default function QuestTrackerScreen({
   onFindTrail,
 }: QuestTrackerScreenProps) {
   const user = auth.currentUser;
+  const isTrailQuest = quest.id === "get-it-dirty";
+  const locationRequirement: "none" | "optional" | "required" =
+    quest.id === "get-it-dirty" || quest.id === "road-less-travelled" ||
+    quest.id === "start-a-meet-and-greet" || quest.id === "create-a-convoy"
+      ? "required"
+      : quest.id === "find-your-twin" ? "none" : "optional";
+  const photoStepNumber = quest.steps.length;
+  const [locationExpanded, setLocationExpanded] = useState(false);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationPlaceId, setLocationPlaceId] = useState<string | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{id: string; label: string}>>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [isSavingStep, setIsSavingStep] = useState(false);
+  const placesKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? "";
+
+  useEffect(() => {
+    if (!locationExpanded || locationPlaceId || locationQuery.trim().length < 3 || !placesKey) {
+      setLocationSuggestions([]);
+      setIsSearchingPlaces(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "X-Goog-Api-Key": placesKey},
+          body: JSON.stringify({input: locationQuery.trim(), includedRegionCodes: ["za"]}),
+        });
+        if (!response.ok) throw new Error(`Places autocomplete: ${response.status}`);
+        const result = await response.json();
+        if (!cancelled) setLocationSuggestions((result.suggestions ?? [])
+          .filter((item: any) => item.placePrediction?.placeId)
+          .map((item: any) => ({id: item.placePrediction.placeId as string,
+            label: (item.placePrediction.text?.text ?? "") as string})));
+      } catch (error) {
+        console.warn("Unable to search locations:", error);
+        if (!cancelled) setLocationSuggestions([]);
+      } finally {
+        if (!cancelled) setIsSearchingPlaces(false);
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [locationExpanded, locationQuery, locationPlaceId, placesKey]);
+
+  const completeChecklistStep = async (stepNumber: number, location?: string | null) => {
+    if (!user || isSavingStep) return;
+    setIsSavingStep(true);
+    try {
+      const completedSteps = Array.from(new Set([...progress.completedSteps, stepNumber])).sort((a, b) => a - b);
+      const nextStep = Math.min(quest.steps.length, stepNumber + 1);
+      const updates: Record<string, unknown> = {completedSteps, currentStep: nextStep};
+      if (stepNumber === 1) {
+        updates.selectedLocation = location ?? null;
+        // Keep the existing selectedTrail field for compatibility with older progress records.
+        if (!isTrailQuest) updates.selectedTrail = location ?? null;
+      }
+      await updateDoc(doc(db, "users", user.uid, "quests", quest.id), updates);
+      onProgressChange({...progress, completedSteps, currentStep: nextStep,
+        ...(stepNumber === 1 ? {selectedLocation: location ?? null,
+          ...(!isTrailQuest ? {selectedTrail: location ?? null} : {})} : {})});
+      setLocationExpanded(false);
+    } catch (error) {
+      console.error("Unable to save checklist step:", error);
+      Alert.alert("Something went wrong", "We couldn't save your progress. Please try again.");
+    } finally { setIsSavingStep(false); }
+  };
+
 
   const [
     isUpdatingDrive,
@@ -607,7 +678,7 @@ export default function QuestTrackerScreen({
           Array.from(
             new Set([
               ...progress.completedSteps,
-              3,
+              photoStepNumber,
             ])
           ).sort(
             (a, b) => a - b
@@ -615,7 +686,7 @@ export default function QuestTrackerScreen({
 
         const nextStep = Math.min(
           quest.steps.length,
-          3
+          photoStepNumber
         );
 
         const updatedProgress: QuestProgress =
@@ -667,35 +738,27 @@ export default function QuestTrackerScreen({
       }
     };
 
-  const handleStepPress = (
-    stepNumber: number,
-    current: boolean
-  ) => {
-    if (!current) {
-      return;
-    }
-
+  const handleStepPress = (stepNumber: number, current: boolean) => {
+    if (!current) return;
     if (stepNumber === 1) {
-      onFindTrail();
-      return;
-    }
-
-    if (stepNumber === 2) {
-      if (
-        progress.driveStatus ===
-        "driving"
-      ) {
-        confirmStopDrive();
+      if (isTrailQuest) { onFindTrail(); return; }
+      if (locationRequirement === "none") {
+        void completeChecklistStep(1);
       } else {
-        confirmStartDrive();
+        setLocationExpanded((value) => !value);
       }
-
       return;
     }
-
-    if (stepNumber === 3) {
-      chooseProofPhoto();
+    if (stepNumber === photoStepNumber) { chooseProofPhoto(); return; }
+    if (isTrailQuest && stepNumber === 2) {
+      if (progress.driveStatus === "driving") confirmStopDrive();
+      else confirmStartDrive();
+      return;
     }
+    Alert.alert("Mark step complete?", quest.steps[stepNumber - 1], [
+      {text: "Cancel", style: "cancel"},
+      {text: "Mark Complete", onPress: () => { void completeChecklistStep(stepNumber); }},
+    ]);
   };
 
   const abandonQuest = () => {
@@ -930,11 +993,7 @@ export default function QuestTrackerScreen({
                     !completed &&
                     !current;
 
-                  const isInteractive =
-                    current &&
-                    (stepNumber === 1 ||
-                      stepNumber === 2 ||
-                      stepNumber === 3);
+                  const isInteractive = current;
 
                   return (
                     <Pressable
@@ -942,14 +1001,13 @@ export default function QuestTrackerScreen({
                       disabled={
                         !isInteractive ||
                         isUpdatingDrive ||
-                        isUploadingPhoto
+                        isUploadingPhoto ||
+                        isSavingStep
                       }
-                      onPress={() =>
-                        handleStepPress(
-                          stepNumber,
-                          current
-                        )
-                      }
+                      onPress={() => {
+                        if (stepNumber === 1 && locationExpanded && !isTrailQuest) return;
+                        handleStepPress(stepNumber, current);
+                      }}
                       style={[
                         styles.step,
                         completed &&
@@ -995,10 +1053,62 @@ export default function QuestTrackerScreen({
                           {step}
                         </Text>
 
+                        {stepNumber === 1 && completed && !!(progress.selectedLocation || (!isTrailQuest && progress.selectedTrail)) && (
+                          <Text style={styles.stepSubtitle}>Location: {progress.selectedLocation || progress.selectedTrail}</Text>
+                        )}
+                        {stepNumber === 1 && current && !isTrailQuest && locationRequirement === "none" && (
+                          <Text style={styles.driveActionText}>Tap to complete this step</Text>
+                        )}
+                        {stepNumber === 1 && current && !isTrailQuest && locationRequirement !== "none" && (
+                          <>
+                            <Text style={styles.driveActionText}>
+                              {locationExpanded ? "Tap to close location search" : `Tap to ${locationRequirement === "optional" ? "add an optional location" : "choose a location"}`}
+                            </Text>
+                            {locationExpanded && (
+                              <View style={styles.locationPanel}>
+                                <Text style={styles.locationHint}>
+                                  {locationRequirement === "optional"
+                                    ? "Add a location if you like, or continue without one."
+                                    : "Select a location to continue."}
+                                </Text>
+                                <TextInput
+                                  style={styles.locationInput}
+                                  placeholder="Search for a location..."
+                                  placeholderTextColor="#A7ADBA"
+                                  value={locationQuery}
+                                  onChangeText={(value) => {setLocationQuery(value); setLocationPlaceId(null);}}
+                                  autoCorrect={false}
+                                />
+                                {isSearchingPlaces && <ActivityIndicator color={colors.green} />}
+                                {locationSuggestions.map((place) => (
+                                  <Pressable key={place.id} style={styles.locationSuggestion}
+                                    onPress={() => {setLocationQuery(place.label); setLocationPlaceId(place.id); setLocationSuggestions([]);}}>
+                                    <MaterialIcons name="place" size={17} color={colors.green} />
+                                    <Text style={styles.locationSuggestionText}>{place.label}</Text>
+                                  </Pressable>
+                                ))}
+                                {!!locationPlaceId && <Text style={styles.locationHint}>Location selected ✓</Text>}
+                                <Pressable
+                                  style={[styles.locationContinue, !locationPlaceId && locationRequirement === "required" && styles.locationDisabled]}
+                                  disabled={isSavingStep || (!locationPlaceId && locationRequirement === "required")}
+                                  onPress={() => { void completeChecklistStep(1, locationPlaceId ? locationQuery : null); }}>
+                                  {isSavingStep ? <ActivityIndicator color={colors.white} /> :
+                                    <Text style={styles.locationContinueText}>
+                                      {locationPlaceId ? "SAVE LOCATION & CONTINUE" : "CONTINUE WITHOUT LOCATION"}
+                                    </Text>}
+                                </Pressable>
+                              </View>
+                            )}
+                          </>
+                        )}
+                        {current && stepNumber > 1 && stepNumber !== photoStepNumber && !isTrailQuest && (
+                          <Text style={styles.driveActionText}>Tap to mark this step complete</Text>
+                        )}
+
                         {current &&
                           stepNumber ===
                             2 &&
-                          progress.selectedTrail && (
+                          isTrailQuest && progress.selectedTrail && (
                             <>
                               <Text
                                 style={
@@ -1077,7 +1187,7 @@ export default function QuestTrackerScreen({
                         {completed &&
                           stepNumber ===
                             2 &&
-                          progress.selectedTrail &&
+                          isTrailQuest && progress.selectedTrail &&
                           progress.driveStartedAt && (
                             <Text
                               style={
@@ -1099,7 +1209,7 @@ export default function QuestTrackerScreen({
 
                         {current &&
                           stepNumber ===
-                            3 && (
+                            photoStepNumber && (
                             <>
                               {!selectedProofPhoto && (
                                 <Text
@@ -1182,7 +1292,7 @@ export default function QuestTrackerScreen({
 
                         {completed &&
                           stepNumber ===
-                            3 &&
+                            photoStepNumber &&
                           progress.proofPhotoURL && (
                             <View
                               style={
@@ -1212,7 +1322,7 @@ export default function QuestTrackerScreen({
                         {isUpdatingDrive &&
                           current &&
                           stepNumber ===
-                            2 && (
+                            2 && isTrailQuest && (
                             <ActivityIndicator
                               size="small"
                               color={
@@ -1480,6 +1590,19 @@ const styles = StyleSheet.create({
     color: "#C7CAD0",
   },
 
+  locationPanel: {marginTop: 12, gap: 8},
+  locationHint: {fontFamily: fonts.regular, fontSize: 12, color: colors.textSecondary},
+  locationInput: {borderWidth: 1, borderColor: colors.green, borderRadius: 5,
+    paddingHorizontal: 10, paddingVertical: 10, minHeight: 44, fontFamily: fonts.regular,
+    fontSize: 13, color: colors.text, backgroundColor: colors.background},
+  locationSuggestion: {flexDirection: "row", alignItems: "center", gap: 7,
+    paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider},
+  locationSuggestionText: {flex: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.text},
+  locationContinue: {minHeight: 42, borderRadius: 4, backgroundColor: colors.green,
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 8, marginTop: 4},
+  locationDisabled: {opacity: 0.45},
+  locationContinueText: {fontFamily: fonts.extraBold, fontSize: 11, color: colors.white,
+    textAlign: "center"},
   stepSubtitle: {
     marginTop: 2,
     fontFamily: fonts.regular,
