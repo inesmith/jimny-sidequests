@@ -132,28 +132,7 @@ export default function NotificationsScreen({
             </Text>
 
             {/* UNREAD */}
-            <View style={styles.unreadRow}>
-              <View style={styles.unreadLeft}>
-                {unreadCount > 0 && (
-                  <View style={styles.unreadDot} />
-                )}
-              </View>
-
-              {unreadCount > 0 && (
-                <Pressable
-                  hitSlop={10}
-                  onPress={onMarkAllAsRead}
-                >
-                  <Text
-                    style={
-                      styles.markAllText
-                    }
-                  >
-                    Mark all as read
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+          
 
             {/* SECTIONS */}
             {sections.map((section) => {

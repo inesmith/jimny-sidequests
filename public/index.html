@@ -1,0 +1,684 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f8f1e7" />
+  <title>Jimny Side Quests | Meet & Greet Invitation</title>
+
+  <style>
+    :root {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #172236;
+      background: #f8f1e7;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .page {
+      max-width: 460px;
+      margin: 0 auto;
+      padding: 24px 18px 48px;
+      min-height: 100vh;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0 24px;
+    }
+
+    .brand {
+      font-size: 13px;
+      font-weight: 900;
+      color: #651c19;
+      letter-spacing: .02em;
+    }
+
+    .pill {
+      background: #651c19;
+      color: white;
+      border-radius: 24px;
+      padding: 7px 12px;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .welcome {
+      border: 1px solid #20412e;
+      border-radius: 4px;
+      padding: 17px 16px;
+      margin-bottom: 25px;
+    }
+
+    h1 {
+      font-size: 23px;
+      line-height: 1.2;
+      margin: 0 0 8px;
+    }
+
+    p { line-height: 1.5; }
+
+    .sub {
+      color: #566273;
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      color: #d84419;
+      font-weight: 900;
+      margin: 0 0 10px;
+    }
+
+    .event-card {
+      border: 2px solid #172236;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 23px;
+      background: #fff9f1;
+    }
+
+    #cover {
+      display: none;
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+    }
+
+    .event-copy { padding: 16px; }
+
+    h2 {
+      font-size: 21px;
+      margin: 0 0 8px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 900;
+      margin: 0 0 17px;
+    }
+
+    .detail {
+      display: flex;
+      gap: 12px;
+      margin: 0 0 20px;
+    }
+
+    .detail-icon {
+      font-size: 20px;
+      width: 24px;
+      flex: none;
+    }
+
+    .detail strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .detail span {
+      display: block;
+      color: #566273;
+      font-size: 14px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .notice {
+      background: #efe5d6;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 22px 0 16px;
+    }
+
+    .notice strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .notice p {
+      margin: 0;
+      font-size: 13px;
+      color: #566273;
+    }
+
+    button {
+      width: 100%;
+      min-height: 49px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      padding: 12px;
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .primary {
+      background: #073c28;
+      border: 1px solid #073c28;
+      color: white;
+    }
+
+    .secondary {
+      background: transparent;
+      border: 1px solid #f28b18;
+      color: #172236;
+      margin-top: 9px;
+    }
+
+    .link-button {
+      border: 0;
+      background: transparent;
+      color: #651c19;
+      text-decoration: underline;
+      margin-top: 8px;
+      min-height: 34px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 13px;
+      margin: 14px 0 6px;
+    }
+
+    input {
+      width: 100%;
+      min-height: 46px;
+      padding: 12px;
+      border: 1px solid #b9b0a5;
+      border-radius: 4px;
+      background: white;
+      font-size: 16px;
+    }
+
+    .status {
+      margin: 14px 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .error { color: #a42222; }
+    .success { color: #073c28; font-weight: 700; }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+
+    <header class="header">
+      <div class="brand">JIMNY SIDE QUESTS</div>
+      <div class="pill">INVITATION</div>
+    </header>
+
+    <section class="welcome">
+      <h1>You're Invited! 🚙</h1>
+      <p class="sub">
+        A fellow Jimny owner is getting the crew together.
+        Are you joining the adventure?
+      </p>
+    </section>
+
+    <div class="eyebrow">JIMNY MEET &amp; GREET</div>
+
+    <section class="event-card">
+      <img id="cover" alt="Meet & Greet event cover" />
+
+      <div class="event-copy">
+        <h2 id="event-title">Loading your invitation…</h2>
+        <p class="sub" id="event-summary">
+          Checking the event details.
+        </p>
+      </div>
+    </section>
+
+    <section id="details" hidden>
+      <div class="section-title">EVENT DETAILS</div>
+
+      <div class="detail">
+        <div class="detail-icon">📍</div>
+        <div>
+          <strong>Location</strong>
+          <span id="location"></span>
+        </div>
+      </div>
+
+      <div class="detail">
+        <div class="detail-icon">📅</div>
+        <div>
+          <strong>Date &amp; time</strong>
+          <span id="date"></span>
+        </div>
+      </div>
+
+      <div class="detail" id="message-row" hidden>
+        <div class="detail-icon">💬</div>
+        <div>
+          <strong>A message from the organiser</strong>
+          <span id="message"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="notice" id="notice">
+      <strong>Ready to join the crew?</strong>
+      <p>
+        Sign in with your existing Jimny Gathering account to RSVP.
+      </p>
+    </section>
+
+    <section id="login-section" hidden>
+      <form id="login-form">
+        <label for="email">Email address</label>
+        <input
+          id="email"
+          type="email"
+          autocomplete="email"
+          required
+        />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button
+          class="primary"
+          type="submit"
+          style="margin-top:18px"
+        >
+          SIGN IN TO RSVP
+        </button>
+      </form>
+    </section>
+
+    <section id="rsvp-section" hidden>
+      <button id="accept" class="primary" type="button">
+        COUNT ME IN! 🚙
+      </button>
+
+      <button id="decline" class="secondary" type="button">
+        MAYBE NEXT TIME
+      </button>
+
+      <button id="logout" class="link-button" type="button">
+        Sign out
+      </button>
+    </section>
+
+    <p
+      id="status"
+      class="status"
+      role="status"
+      aria-live="polite"
+    ></p>
+
+  </main>
+
+  <script type="module">
+    import {
+      initializeApp
+    } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
+
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      setDoc,
+      serverTimestamp
+    } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyA5BXwIxtDbUk6QXMYoF7QgiMpwpjqQ5UU',
+      authDomain: 'jimny-side-quests.firebaseapp.com',
+      projectId: 'jimny-side-quests',
+      storageBucket: 'jimny-side-quests.firebasestorage.app',
+      messagingSenderId: '610572006907',
+      appId: '1:610572006907:web:99a23c923e751e1f59875e'
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (id) => document.getElementById(id);
+
+    const eventId = new URLSearchParams(
+      window.location.search
+    ).get('invite');
+
+    let eventData = null;
+    let currentUser = null;
+    let busy = false;
+
+    const status = (message, isError = false) => {
+      $('status').textContent = message;
+      $('status').className =
+        'status ' + (isError ? 'error' : '');
+    };
+
+    const dateValue = (value) =>
+      value?.toDate?.() ??
+      (typeof value === 'string' ? new Date(value) : null);
+
+    async function loadEvent() {
+      if (
+        !eventId ||
+        !/^[a-zA-Z0-9_-]{1,150}$/.test(eventId)
+      ) {
+        $('event-title').textContent =
+          'Invitation link missing';
+
+        $('event-summary').textContent =
+          'Please ask the organiser to share the full invitation link.';
+
+        return false;
+      }
+
+      try {
+        const snapshot = await getDoc(
+          doc(db, 'experiences', eventId)
+        );
+
+        if (
+          !snapshot.exists() ||
+          snapshot.data().eventType !== 'meetAndGreet'
+        ) {
+          throw new Error(
+            'This Meet & Greet could not be found.'
+          );
+        }
+
+        eventData = snapshot.data();
+
+        $('event-title').textContent =
+          eventData.title || 'Jimny Meet & Greet';
+
+        $('event-summary').textContent =
+          'A Jimny adventure is better together.';
+
+        $('location').textContent =
+          eventData.location || 'Location to be confirmed';
+
+        const startsAt = dateValue(eventData.startsAt);
+
+        $('date').textContent =
+          startsAt && !isNaN(startsAt.getTime())
+            ? startsAt.toLocaleString('en-ZA', {
+                dateStyle: 'full',
+                timeStyle: 'short',
+                timeZone: 'Africa/Johannesburg'
+              })
+            : eventData.eventDate || 'Date to be confirmed';
+
+        if (eventData.message) {
+          $('message').textContent = eventData.message;
+          $('message-row').hidden = false;
+        }
+
+        // Displays the event image once Firebase Storage
+        // uploads are connected to the Meet & Greet form.
+        const imageUrl =
+          eventData.coverImageURL ||
+          eventData.coverImageUrl ||
+          eventData.imageUrl;
+
+        if (
+          typeof imageUrl === 'string' &&
+          /^https:\/\//.test(imageUrl)
+        ) {
+          $('cover').src = imageUrl;
+          $('cover').hidden = false;
+          $('cover').style.display = 'block';
+
+          $('cover').onerror = () => {
+            $('cover').style.display = 'none';
+          };
+        }
+
+        $('details').hidden = false;
+        return true;
+
+      } catch (error) {
+        $('event-title').textContent =
+          'Invitation unavailable';
+
+        $('event-summary').textContent =
+          'We could not load this Meet & Greet.';
+
+        status(
+          error.message || 'Please try again later.',
+          true
+        );
+
+        return false;
+      }
+    }
+
+    async function updateSession(user) {
+      currentUser = user;
+
+      $('login-section').hidden = true;
+      $('rsvp-section').hidden = true;
+
+      if (!eventData) return;
+
+      if (!user) {
+        $('login-section').hidden = false;
+        status('');
+        return;
+      }
+
+      try {
+        const member = await getDoc(
+          doc(db, 'users', user.uid)
+        );
+
+        if (!member.exists()) {
+          status(
+            'This account does not have a Jimny Gathering member profile. Please sign in with your registered account.',
+            true
+          );
+
+          $('rsvp-section').hidden = false;
+          $('accept').disabled = true;
+          $('decline').disabled = true;
+          return;
+        }
+
+        const response = await getDoc(
+          doc(
+            db,
+            'experiences',
+            eventId,
+            'rsvps',
+            user.uid
+          )
+        );
+
+        const existing = response.exists()
+          ? response.data().status
+          : null;
+
+        $('rsvp-section').hidden = false;
+        $('accept').disabled = false;
+        $('decline').disabled = false;
+
+        if (existing === 'accepted') {
+          status(
+            "You're going! 🚙 You can change your response below."
+          );
+        } else if (existing === 'declined') {
+          status(
+            'Maybe next time! You can change your response below.'
+          );
+        } else {
+          status(
+            'Signed in. Let the crew know if you can make it!'
+          );
+        }
+
+      } catch (error) {
+        $('rsvp-section').hidden = true;
+
+        status(
+          'Could not verify your membership or load your RSVP. Check your Firebase permissions.',
+          true
+        );
+
+        console.error(error);
+      }
+    }
+
+    $('login-form').addEventListener(
+      'submit',
+      async (e) => {
+        e.preventDefault();
+
+        status('Signing in…');
+
+        try {
+          await signInWithEmailAndPassword(
+            auth,
+            $('email').value.trim(),
+            $('password').value
+          );
+        } catch (error) {
+          status(
+            'Could not sign in. Check your email and password.',
+            true
+          );
+        }
+      }
+    );
+
+    async function respond(answer) {
+      if (!currentUser || !eventData || busy) return;
+
+      const startsAt = dateValue(eventData.startsAt);
+
+      if (
+        eventData.status !== 'upcoming' ||
+        (startsAt && startsAt.getTime() <= Date.now())
+      ) {
+        status(
+          'This Meet & Greet is no longer accepting RSVPs.',
+          true
+        );
+        return;
+      }
+
+      busy = true;
+
+      $('accept').disabled = true;
+      $('decline').disabled = true;
+
+      status('Saving your RSVP…');
+
+      try {
+        await setDoc(
+          doc(
+            db,
+            'experiences',
+            eventId,
+            'rsvps',
+            currentUser.uid
+          ),
+          {
+            userId: currentUser.uid,
+            status: answer,
+            respondedAt: serverTimestamp()
+          }
+        );
+
+        status(
+          answer === 'accepted'
+            ? "You're on the list! See you there. 🚙"
+            : 'Maybe next time! Thanks for letting the crew know.'
+        );
+
+      } catch (error) {
+        console.error(error);
+
+        status(
+          'Could not save your RSVP. Your Firestore security rules may need updating.',
+          true
+        );
+
+      } finally {
+        busy = false;
+        $('accept').disabled = false;
+        $('decline').disabled = false;
+      }
+    }
+
+    $('accept').addEventListener(
+      'click',
+      () => respond('accepted')
+    );
+
+    $('decline').addEventListener(
+      'click',
+      () => respond('declined')
+    );
+
+    $('logout').addEventListener(
+      'click',
+      () => signOut(auth)
+    );
+
+    onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+
+  if (!user) {
+    eventData = null;
+
+    $('event-title').textContent =
+      'Your invitation is waiting! 🚙';
+
+    $('event-summary').textContent =
+      'Sign in to view your Meet & Greet invitation.';
+
+    $('details').hidden = true;
+    $('login-section').hidden = false;
+    $('rsvp-section').hidden = true;
+
+    status('');
+    return;
+  }
+
+    $('login-section').hidden = true;
+
+    status('Loading your invitation…');
+
+    const loaded = await loadEvent();
+
+    if (loaded) {
+      await updateSession(user);
+    }
+  });
+  </script>
+</body>
+</html>

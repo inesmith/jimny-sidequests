@@ -1,173 +1,818 @@
+
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
-import { colors, fonts } from "../theme/theme";
-import BottomNav from "../components/BottomNav";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { colors, fonts, spacing } from "../theme/theme";
 import type { Experience } from "./ExperienceDetailsScreen";
-import { experiences as presetExperiences } from "./UpcomingExperiencesScreen";
+
+type Category =
+  | "Created"
+  | "Registered"
+  | "Invited"
+  | "Attended";
+
+type Item = {
+  experience: Experience;
+  categories: Category[];
+};
 
 type Props = {
   onBack: () => void;
-  onExplore: () => void;
-  onAdventures: () => void;
-  onPassport: () => void;
-  onProfile: () => void;
   onExperiencePress: (experience: Experience) => void;
 };
 
-type Entry = { experience: Experience; kind: "accepted" | "registered"; date: Date | null };
+const categories: Category[] = [
+  "Created",
+  "Registered",
+  "Invited",
+  "Attended",
+];
 
-function eventDate(value: any): Date | null {
-  if (value?.toDate) return value.toDate();
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const d = new Date(`${value}T12:00:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (typeof value === "string") {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  return null;
-}
+function formatExperience(
+  id: string,
+  data: Record<string, any>
+): Experience {
+  const startsAt = data.startsAt?.toDate?.();
 
-function fromFirestore(id: string, data: any): Experience {
-  const start = eventDate(data.startsAt);
-  const date = eventDate(data.eventDate) ?? start;
-  const location = typeof data.location === "string" ? data.location : data.location?.formattedAddress ?? "";
+  const eventDate =
+    data.eventDate ||
+    (startsAt
+      ? startsAt.toISOString().slice(0, 10)
+      : "");
+
   return {
     id,
-    title: data.title ?? "Meet & Greet",
-    category: data.category ?? data.experienceType ?? "Meet & Greet",
-    date: date ? date.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) : "To be confirmed",
-    eventDate: data.eventDate ?? undefined,
-    time: start ? start.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" }) : data.time ?? "To be confirmed",
-    location,
-    description: data.description ?? data.message ?? "",
+    title:
+      data.title ||
+      data.experienceType ||
+      "Meet & Greet",
+    category:
+      data.experienceType ||
+      data.category ||
+      "Meet & Greet",
+    date: eventDate || "Date to be confirmed",
+    eventDate,
+    time: startsAt
+      ? startsAt.toLocaleTimeString("en-ZA", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : data.time || "",
+    location:
+      typeof data.location === "string"
+        ? data.location
+        : data.location?.formattedAddress ||
+          "Location to be confirmed",
+    description:
+      data.description || data.message || "",
     eventType: data.eventType,
     source: data.source,
-    imageURL: data.imageURL ?? null,
-    locationPlaceId: data.placeId ?? data.location?.placeId ?? null,
-    latitude: data.latitude ?? data.location?.latitude ?? null,
-    longitude: data.longitude ?? data.location?.longitude ?? null,
+    imageURL:
+      data.coverImageURL ||
+      data.coverImageUrl ||
+      data.imageURL ||
+      null,
+    locationPlaceId:
+      data.placeId ||
+      data.locationPlaceId ||
+      null,
   };
 }
 
-export default function MyExperiencesScreen({ onBack, onExplore, onAdventures, onPassport, onProfile, onExperiencePress }: Props) {
-  const [tab, setTab] = useState<"upcoming" | "history">("upcoming");
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+export default function MyExperiencesScreen({
+  onBack,
+  onExperiencePress,
+}: Props) {
+  const [active, setActive] =
+    useState<Category>("Created");
+
+  const [items, setItems] =
+    useState<Item[]>([]);
+
+  const [loading, setLoading] =
+    useState(false);
 
   const load = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) { setLoading(false); setError("Please sign in to view your experiences."); return; }
+    const uid = auth.currentUser?.uid;
+
+    if (!uid) return;
+
     setLoading(true);
-    setError("");
+
     try {
-      const [registrations, community] = await Promise.all([
-        getDocs(collection(db, "users", user.uid, "experienceRegistrations")),
+      const [
+        allExperiences,
+        registrations,
+        notifications,
+      ] = await Promise.all([
         getDocs(collection(db, "experiences")),
+        getDocs(
+          collection(
+            db,
+            "users",
+            uid,
+            "experienceRegistrations"
+          )
+        ),
+        getDocs(
+          collection(
+            db,
+            "users",
+            uid,
+            "notifications"
+          )
+        ),
       ]);
-      const communityMap = new Map(community.docs.map((item) => [item.id, item.data()]));
-      const found: Entry[] = [];
-      for (const item of registrations.docs) {
-        const data = item.data();
-        const id = data.experienceId ?? item.id;
-        const communityData = communityMap.get(id);
-        const preset = presetExperiences.find((e) => e.id === id);
-        const experience: Experience = communityData ? fromFirestore(id, communityData) : preset ?? {
-          id,
-          title: data.experienceTitle ?? "Experience",
-          category: data.experienceCategory ?? "Experience",
-          date: data.experienceDate ?? data.date ?? "To be confirmed",
-          time: data.experienceTime ?? "To be confirmed",
-          location: data.experienceLocation ?? "",
-          description: "",
-          eventDate: data.eventDate ?? undefined,
-        };
-        const date = eventDate(communityData?.startsAt) ?? eventDate(communityData?.eventDate) ?? eventDate(experience.eventDate) ?? eventDate(data.eventDate) ?? eventDate(experience.date);
-        found.push({ experience, kind: "registered", date });
-      }
-      // Each member reads only their own RSVP document. Other members' RSVPs stay private.
-      const meetEvents = community.docs.filter((item) => item.data().eventType === "meetAndGreet");
-      const rsvps = await Promise.all(meetEvents.map(async (item) => {
-        const snapshot = await getDoc(doc(db, "experiences", item.id, "rsvps", user.uid));
-        return snapshot.exists() && snapshot.data().status === "accepted" ? item : null;
-      }));
-      for (const item of rsvps) {
-        if (!item) continue;
-        const data = item.data();
-        const experience = fromFirestore(item.id, data);
-        found.push({ experience, kind: "accepted", date: eventDate(data.startsAt) ?? eventDate(data.eventDate) });
-      }
-      const unique = new Map<string, Entry>();
-      found.forEach((entry) => unique.set(entry.experience.id, entry));
-      setEntries([...unique.values()].sort((a, b) => (a.date?.getTime() ?? Infinity) - (b.date?.getTime() ?? Infinity)));
-    } catch (e) {
-      console.error("Unable to load My Experiences:", e);
-      setError("Couldn't load your experiences. Please try again.");
-    } finally { setLoading(false); }
+
+      const map = new Map<string, Item>();
+
+      const ensure = (
+        id: string,
+        data: Record<string, any>
+      ) => {
+        if (!map.has(id)) {
+          map.set(id, {
+            experience: formatExperience(id, data),
+            categories: [],
+          });
+        }
+
+        return map.get(id)!;
+      };
+
+      const add = (
+        id: string,
+        data: Record<string, any>,
+        category: Category
+      ) => {
+        const item = ensure(id, data);
+
+        if (!item.categories.includes(category)) {
+          item.categories.push(category);
+        }
+      };
+
+      const raw = new Map<
+        string,
+        Record<string, any>
+      >();
+
+      allExperiences.forEach((snap) =>
+        raw.set(snap.id, snap.data())
+      );
+
+      const ids = Array.from(raw.keys());
+
+      const rsvps = await Promise.all(
+        ids.map((id) =>
+          getDocs(
+            query(
+              collection(
+                db,
+                "experiences",
+                id,
+                "rsvps"
+              ),
+              where("userId", "==", uid)
+            )
+          )
+            .then((snapshot) => ({
+              id,
+              snapshot,
+            }))
+            .catch(() => null)
+        )
+      );
+
+      raw.forEach((data, id) => {
+        if (data.createdBy === uid) {
+          add(id, data, "Created");
+        }
+      });
+
+      registrations.forEach((snap) => {
+        const data = snap.data();
+
+        const id =
+          data.experienceId || snap.id;
+
+        const experience = raw.get(id);
+
+        if (!experience) return;
+
+        if (
+          data.attended === true ||
+          data.attendanceStatus === "confirmed"
+        ) {
+          add(id, experience, "Attended");
+        } else if (
+          data.status !== "cancelled" &&
+          data.status !== "declined"
+        ) {
+          add(id, experience, "Registered");
+        }
+      });
+
+      rsvps.forEach((result) => {
+        if (!result) return;
+
+        const experience = raw.get(result.id);
+
+        if (!experience) return;
+
+        result.snapshot.forEach((snap) => {
+          const status = snap.data().status;
+
+          if (status === "accepted") {
+            add(
+              result.id,
+              experience,
+              "Registered"
+            );
+          }
+        });
+      });
+
+      notifications.forEach((snap) => {
+        const data = snap.data();
+
+        if (
+          data.type !== "invite" ||
+          typeof data.experienceId !== "string"
+        ) {
+          return;
+        }
+
+        const experience = raw.get(
+          data.experienceId
+        );
+
+        if (!experience) return;
+
+        const item = map.get(
+          data.experienceId
+        );
+
+        if (
+          data.rsvpStatus === "accepted" ||
+          item?.categories.includes(
+            "Registered"
+          )
+        ) {
+          return;
+        }
+
+        if (data.rsvpStatus === "declined") {
+          return;
+        }
+
+        add(
+          data.experienceId,
+          experience,
+          "Invited"
+        );
+      });
+
+      setItems(
+        Array.from(map.values()).sort(
+          (a, b) =>
+            (
+              b.experience.eventDate || ""
+            ).localeCompare(
+              a.experience.eventDate || ""
+            )
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Unable to load My Experiences:",
+        error
+      );
+
+      Alert.alert(
+        "Unable to load experiences",
+        "Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const visible = entries.filter((item) => {
-    if (!item.date) return tab === "upcoming";
-    const day = new Date(item.date); day.setHours(0, 0, 0, 0);
-    return tab === "upcoming" ? day >= today : day < today;
-  });
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const visible = items.filter((item) =>
+    item.categories.includes(active)
+  );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.root}>
+      {/* HEADER */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={12} style={styles.side}><MaterialIcons name="arrow-back" size={25} color={colors.text} /></Pressable>
-        <Text style={styles.heading}>My Experiences</Text>
-        <Pressable onPress={() => void load()} hitSlop={12} style={[styles.side, { alignItems: "flex-end" }]}><MaterialIcons name="refresh" size={24} color={colors.text} /></Pressable>
+        <Pressable
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <MaterialIcons
+            name="arrow-back-ios"
+            size={18}
+            color={colors.text}
+          />
+
+          <Text style={styles.backText}>
+            Back
+          </Text>
+        </Pressable>
+
+        <Text style={styles.headerTitle}>
+          MY EXPERIENCES
+        </Text>
+
+        <View style={styles.headerSpacer} />
       </View>
-      <View style={styles.tabs}>
-        {(["upcoming", "history"] as const).map((value) => (
-          <Pressable key={value} onPress={() => setTab(value)} style={[styles.tab, tab === value && styles.selectedTab]}>
-            <Text style={[styles.tabText, tab === value && styles.selectedTabText]}>{value === "upcoming" ? "UPCOMING" : "HISTORY"}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        {loading ? <ActivityIndicator color={colors.green} style={{ marginTop: 32 }} /> : error ? <Text style={styles.muted}>{error}</Text> : visible.length === 0 ? (
-          <View style={styles.empty}><MaterialIcons name="event-available" size={42} color={colors.green} /><Text style={styles.emptyTitle}>No {tab} experiences yet</Text><Text style={styles.muted}>Your registered experiences and accepted Meet & Greets will appear here.</Text></View>
-        ) : visible.map(({ experience, kind }) => (
-          <Pressable key={experience.id} style={styles.card} onPress={() => onExperiencePress(experience)}>
-            <View style={styles.cardTop}><Text style={styles.cardTitle}>{experience.title}</Text><MaterialIcons name="chevron-right" size={24} color={colors.textSecondary} /></View>
-            <Text style={styles.meta}><MaterialIcons name="event" size={14} />  {experience.date}{experience.time && experience.time !== "To be confirmed" ? ` · ${experience.time}` : ""}</Text>
-            {!!experience.location && <Text style={styles.meta}><MaterialIcons name="place" size={14} />  {experience.location}</Text>}
-            <Text style={styles.status}>{kind === "accepted" ? "MEET & GREET · GOING" : "EXPERIENCE · REGISTERED"}</Text>
-          </Pressable>
-        ))}
+
+      {/* CONTENT */}
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={
+          styles.listContent
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* PAGE INTRO */}
+        <View style={styles.intro}>
+          <Text style={styles.pageSubtitle}>
+            Your adventures, your Jimny crew.
+          </Text>
+        </View>
+
+        {/* FILTER BUTTONS */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabs}
+          contentContainerStyle={
+            styles.filterContainer
+          }
+        >
+          {categories.map((category) => {
+            const selected =
+              active === category;
+
+            return (
+              <Pressable
+                key={category}
+                onPress={() =>
+                  setActive(category)
+                }
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  selected &&
+                    styles.filterButtonSelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    selected &&
+                      styles.filterTextSelected,
+                  ]}
+                >
+                  {category}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* EXPERIENCES */}
+        {loading ? (
+          <ActivityIndicator
+            color={colors.green}
+            size="large"
+          />
+        ) : visible.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>
+              Nothing here yet 🚙
+            </Text>
+
+            <Text style={styles.emptyText}>
+              Your {active.toLowerCase()} experiences
+              will appear here.
+            </Text>
+          </View>
+        ) : (
+          visible.map((item) => (
+            <Pressable
+              key={item.experience.id}
+              style={styles.card}
+              onPress={() =>
+                onExperiencePress(
+                  item.experience
+                )
+              }
+            >
+              {item.experience.imageURL ? (
+                <Image
+                  source={{
+                    uri: item.experience.imageURL,
+                  }}
+                  style={styles.banner}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.placeholder}>
+                  <MaterialIcons
+                    name="landscape"
+                    size={32}
+                    color={
+                      colors.textSecondary
+                    }
+                  />
+
+                  <Text
+                    style={
+                      styles.placeholderText
+                    }
+                  >
+                    JIMNY SIDE QUESTS
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.cardContent}>
+                <View
+                  style={styles.cardTitleRow}
+                >
+                  <Text style={styles.cardTitle}>
+                    {item.experience.title}
+                  </Text>
+
+                  <View
+                    style={styles.categoryTag}
+                  >
+                    <Text
+                      style={
+                        styles.categoryTagText
+                      }
+                    >
+                      {item.experience.category}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailsRow}>
+                  <Text style={styles.dateText}>
+                    {item.experience.date}
+                  </Text>
+
+                  {!!item.experience.time && (
+                    <Text
+                      style={styles.timeText}
+                    >
+                      {item.experience.time}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.locationRow}>
+                  <MaterialIcons
+                    name="place"
+                    size={16}
+                    color={colors.green}
+                  />
+
+                  <Text
+                    style={styles.locationText}
+                  >
+                    {item.experience.location}
+                  </Text>
+                </View>
+
+                <View style={styles.badges}>
+                  {item.categories.map(
+                    (category) => (
+                      <View
+                        key={category}
+                        style={styles.badge}
+                      >
+                        <Text
+                          style={
+                            styles.badgeText
+                          }
+                        >
+                          {category.toUpperCase()}
+                        </Text>
+                      </View>
+                    )
+                  )}
+                </View>
+
+                <Text style={styles.view}>
+                  VIEW EXPERIENCE →
+                </Text>
+              </View>
+            </Pressable>
+          ))
+        )}
       </ScrollView>
-      <BottomNav selected="profile" onExplore={onExplore} onHibernate={onAdventures} onPassport={onPassport} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  header: { minHeight: 92, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
-  side: { width: 54, justifyContent: "center" },
-  heading: { flex: 1, textAlign: "center", fontFamily: fonts.extraBold, fontSize: 16, color: colors.red },
-  tabs: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 20 },
-  tab: { flex: 1, paddingVertical: 14, alignItems: "center", borderWidth: 1.5, borderColor: colors.orange, borderRadius: 4 },
-  selectedTab: { backgroundColor: colors.green, borderColor: colors.green },
-  tabText: { fontFamily: fonts.extraBold, fontSize: 12, color: colors.text },
-  selectedTabText: { color: colors.white },
-  content: { padding: 16, paddingBottom: 40, gap: 12 },
-  card: { padding: 17, borderWidth: 1.5, borderColor: colors.orange, borderRadius: 4, backgroundColor: colors.background, gap: 8 },
-  cardTop: { flexDirection: "row", alignItems: "center" },
-  cardTitle: { flex: 1, fontFamily: fonts.extraBold, fontSize: 16, color: colors.text },
-  meta: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 19, color: colors.textSecondary },
-  status: { fontFamily: fonts.extraBold, fontSize: 11, color: colors.green, marginTop: 5 },
-  empty: { alignItems: "center", gap: 12, marginTop: 60, paddingHorizontal: 16 },
-  emptyTitle: { fontFamily: fonts.extraBold, fontSize: 16, color: colors.text, textAlign: "center" },
-  muted: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSecondary, textAlign: "center" },
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+
+  // HEADER
+  header: {
+    minHeight: 92,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.screen,
+    borderBottomWidth:
+      StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+  },
+
+  backButton: {
+    width: 105,
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  backText: {
+    marginLeft: 6,
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    color: colors.text,
+  },
+
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: fonts.extraBold,
+    fontSize: 16,
+    lineHeight: 23,
+    color: colors.red,
+  },
+
+  headerSpacer: {
+    width: 105,
+  },
+
+  // CONTENT
+  list: {
+    flex: 1,
+  },
+
+  listContent: {
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
+    paddingHorizontal: 20,
+    paddingTop: 23,
+    paddingBottom: 45,
+  },
+
+  intro: {
+    marginBottom: 8,
+  },
+
+  pageSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textSecondary,
+  },
+
+  // FILTERS - MATCHES HOME SCREEN
+  tabs: {
+    flexGrow: 0,
+    marginBottom: 9,
+  },
+
+  filterContainer: {
+    paddingTop: 12,
+    paddingBottom: 14,
+    gap: 9,
+  },
+
+  filterButton: {
+    minHeight: 38,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: colors.orange,
+    borderRadius: 22,
+    backgroundColor: colors.background,
+  },
+
+  filterButtonSelected: {
+    borderColor: colors.orange,
+    backgroundColor: colors.orange,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+
+  filterText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.text,
+  },
+
+  filterTextSelected: {
+    fontFamily: fonts.extraBold,
+    color: colors.white,
+  },
+
+  pressed: {
+    opacity: 0.8,
+  },
+
+  // EMPTY STATE
+  empty: {
+    alignItems: "center",
+    paddingTop: 65,
+  },
+
+  emptyTitle: {
+    fontFamily: fonts.extraBold,
+    fontSize: 18,
+    color: colors.text,
+  },
+
+  emptyText: {
+    marginTop: 10,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    textAlign: "center",
+    color: colors.textSecondary,
+  },
+
+  // EXPERIENCE CARDS
+  card: {
+    width: "100%",
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: colors.orange,
+    borderRadius: 4,
+    backgroundColor: colors.background,
+    marginBottom: 25,
+    shadowColor: "#000000",
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  banner: {
+    width: "100%",
+    aspectRatio: 2.25,
+  },
+
+  placeholder: {
+    width: "100%",
+    aspectRatio: 2.25,
+    backgroundColor: "#D9D9D9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  placeholderText: {
+    marginTop: 5,
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
+    color: colors.textSecondary,
+  },
+
+  cardContent: {
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  cardTitle: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
+    fontFamily: fonts.extraBold,
+    fontSize: 18,
+    lineHeight: 22,
+    color: colors.text,
+  },
+
+  categoryTag: {
+    flexShrink: 0,
+    maxWidth: 130,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 2,
+    backgroundColor: colors.green,
+  },
+
+  categoryTagText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+    color: colors.white,
+  },
+
+  detailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  dateText: {
+    marginRight: 18,
+    fontFamily: fonts.extraBold,
+    fontSize: 13,
+    color: colors.text,
+  },
+
+  timeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    color: colors.text,
+  },
+
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 8,
+    gap: 4,
+  },
+
+  locationText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+
+  // STATUS BADGES
+  badges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 14,
+  },
+
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: colors.green,
+  },
+
+  badgeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+    color: colors.green,
+  },
+
+  view: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.green,
+    marginTop: 16,
+  },
 });

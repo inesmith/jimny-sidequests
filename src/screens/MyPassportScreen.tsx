@@ -23,6 +23,7 @@ import {
 import { auth, db } from "../firebase/firebase";
 import { colors, fonts } from "../theme/theme";
 import { allQuests } from "../data/quests";
+import BottomNav from "../components/BottomNav";
 
 /*
  * PASSPORT BACKGROUNDS
@@ -585,74 +586,13 @@ export default function MyPassportScreen({
         {/* BOTTOM NAVIGATION */}
         {/* ================================= */}
 
-        <View style={styles.bottomNav}>
-          <Pressable
-            style={styles.navItem}
-            onPress={onExplore}
-          >
-            <MaterialIcons
-              name="explore"
-              size={27}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Explore
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onAdventures}
-          >
-            <MaterialIcons
-              name="monitor-heart"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              Hibernate
-            </Text>
-          </Pressable>
-
-          <View
-            style={[
-              styles.navItem,
-              styles.navItemSelected,
-            ]}
-          >
-            <MaterialIcons
-              name="menu-book"
-              size={27}
-              color={colors.green}
-            />
-
-            <Text
-              style={[
-                styles.navText,
-                styles.navTextSelected,
-              ]}
-            >
-              Passport
-            </Text>
-          </View>
-
-          <Pressable
-            style={styles.navItem}
-            onPress={onProfile}
-          >
-            <MaterialIcons
-              name="account-circle"
-              size={28}
-              color={colors.text}
-            />
-
-            <Text style={styles.navText}>
-              My Profile
-            </Text>
-          </Pressable>
-        </View>
+        <BottomNav
+  selected="passport"
+  onExplore={onExplore}
+  onHibernate={onAdventures}
+  onPassport={() => {}}
+  onProfile={onProfile}
+/>
       </View>
     </SafeAreaView>
   );

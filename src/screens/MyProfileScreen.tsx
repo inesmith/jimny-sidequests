@@ -954,12 +954,12 @@ export default function MyProfileScreen({
         </ScrollView>
 
         {/* SHARED BOTTOM NAVIGATION */}
-        <BottomNav
-          selected="profile"
-          onExplore={onExplore}
-          onHibernate={onAdventures}
-          onPassport={onPassport}
-        />
+          <BottomNav
+  selected="profile"
+  onExplore={onExplore}
+  onHibernate={onAdventures}
+  onPassport={onPassport}
+/>
       </View>
     </SafeAreaView>
   );

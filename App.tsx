@@ -37,7 +37,7 @@ import EditProfileScreen from "./src/screens/EditProfileScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import SignUpScreen from "./src/screens/SignUpScreen";
 import LandingScreen from "./src/screens/LandingScreen";
-
+import MyExperiencesScreen from "./src/screens/MyExperiencesScreen";
 import HomeScreen, {
   type Quest,
 } from "./src/screens/HomeScreen";
@@ -103,7 +103,8 @@ type Screen =
   | "editPassport"
   | "myPassport"
   | "myProfile"
-  | "editProfile";
+  | "editProfile"
+  | "myExperiences";
 
 type UpcomingExperiencesOrigin =
   | "home"
@@ -111,7 +112,8 @@ type UpcomingExperiencesOrigin =
 
 type ExperienceDetailsOrigin =
   | "upcomingExperiences"
-  | "notifications";
+  | "notifications"
+  | "myExperiences";
 
 export default function App() {
   const [screen, setScreen] =
@@ -1290,9 +1292,7 @@ export default function App() {
           onPassport={
             openPassport
           }
-          onAdventures={
-            openAdventures
-          }
+          onAdventures={() => setScreen("adventures")}
           onProfile={
             openProfile
           }
@@ -1786,6 +1786,19 @@ export default function App() {
       );
     }
 
+    if (screen === "myExperiences") {
+      return (
+        <MyExperiencesScreen
+          onBack={() => setScreen("myProfile")}
+          onExperiencePress={(experience) => {
+            setSelectedExperience(experience);
+            setExperienceDetailsBackScreen("myExperiences");
+            setScreen("experienceDetails");
+          }}
+        />
+      );
+    }
+
     /*
      * MY PROFILE
      */
@@ -1795,18 +1808,19 @@ export default function App() {
     ) {
       return (
         <MyProfileScreen
-          onExplore={() =>
-            setScreen(
-              "home"
-            )
-          }
+  onExplore={() =>
+    setScreen(
+      "home"
+    )
+  }
 
-          onAdventures={
-            openAdventures
-          }
-          onMyAdventures={
-            openMyAdventures
-          }
+  onAdventures={openAdventures}
+
+  onMyAdventures={
+    openMyAdventures
+  }
+
+          onMyExperiences={() => setScreen("myExperiences")}
 
           onPassport={
             openPassport
