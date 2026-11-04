@@ -25,18 +25,18 @@ import MapView, {
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { colors, fonts } from "../theme/theme";
 import { findCuratedDestination, type CuratedDestination } from "../data/curatedDestinations";
 import BottomNav from "../components/BottomNav";
 import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import { auth, db } from "../firebase/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { auth, db, storage } from "../firebase/firebase";
 import {
   getNearbyOwners, sendWave, setNearbyVisibility, waveBack,
   type NearbyOwner,
 } from "../services/nearbyJimnys";
-import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 
 type PlaceSuggestion = { placeId: string; description: string };
@@ -851,8 +851,22 @@ export default function HibernateScreen({
 
     setIsSavingMeetUp(true);
     try {
-      // Save the event first. Nearby invitations, cover uploads and RSVP links
-      // will be connected in later steps; do not claim they were delivered.
+      // Upload the selected cover before creating the event so Experience Details
+      // receives a permanent Firebase Storage URL, not a device-only file URI.
+      let imageURL: string | null = null;
+      if (meetCoverImage) {
+        const response = await fetch(meetCoverImage);
+        if (!response.ok) throw new Error("Could not read the selected cover photo.");
+        const blob = await response.blob();
+        // Existing Storage rules permit the owner to write inside users/{uid}.
+        const imageRef = ref(
+          storage,
+          `users/${currentUser.uid}/meetAndGreetCovers/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        );
+        await uploadBytes(imageRef, blob, { contentType: "image/jpeg" });
+        imageURL = await getDownloadURL(imageRef);
+      }
+
       const event = await addDoc(collection(db, "experiences"), {
         createdBy: currentUser.uid,
         source: "community",
@@ -866,15 +880,66 @@ export default function HibernateScreen({
         eventDate: `${meetDate.getFullYear()}-${String(meetDate.getMonth() + 1).padStart(2, "0")}-${String(meetDate.getDate()).padStart(2, "0")}`,
         startsAt: Timestamp.fromDate(meetDate),
         message: meetMessage.trim(),
+        imageURL,
         createdAt: serverTimestamp(),
       });
 
       if (inviteMethod === "nearby") {
-        Alert.alert(
-          "Meet & Greet created!",
-          "Your event is saved to Firebase. Nearby invitations aren't connected yet, so no invitations have been sent."
-        );
-      } else {
+  if (!userLocation) {
+    Alert.alert(
+      "Meet & Greet created!",
+      "Your event was saved, but your location is unavailable. No nearby invitations were sent."
+    );
+  } else {
+    try {
+      const functions = getFunctions(
+        undefined,
+        "africa-south1"
+      );
+
+      const sendInvites = httpsCallable<
+        {
+          experienceId: string;
+          latitude: number;
+          longitude: number;
+        },
+        {
+          success: boolean;
+          sent: number;
+          eligible: number;
+        }
+      >(
+        functions,
+        "sendNearbyMeetAndGreetInvites"
+      );
+
+      const result = await sendInvites({
+        experienceId: event.id,
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      });
+
+      const sent = result.data.sent;
+
+      Alert.alert(
+        "Meet & Greet created! 🚙",
+        sent > 0
+          ? `Your Meet & Greet was created and ${sent} nearby Jimny owner${sent === 1 ? "" : "s"} received an invitation!`
+          : "Your Meet & Greet was created, but no new invitations were sent to eligible nearby owners."
+      );
+    } catch (inviteError) {
+      console.error(
+        "Could not send nearby invitations:",
+        inviteError
+      );
+
+      Alert.alert(
+        "Meet & Greet created!",
+        "Your event was saved, but nearby invitations couldn't be completed. Please check your connection."
+      );
+    }
+  }
+} else {
         const message = [
           "🚙 You're invited to a Jimny Meet & Greet!",
           `Experience: ${meetType}`,
@@ -893,7 +958,6 @@ export default function HibernateScreen({
       }
 
       // The form is kept intact so the organiser can review the details.
-      // Cover images are local previews only until Storage upload is added.
       console.log("Meet & Greet created:", event.id);
     } catch (error) {
       console.error("Could not create Meet & Greet:", error);

@@ -1792,3 +1792,218 @@ export const processAccountDeletion = onDocumentWritten(
 // Deletion workers are intentionally NOT enabled in this staged build.
 // Do not enable irreversible deletion until Storage rules and end-to-end
 // tests have been reviewed. The deleteMyAccount callable only marks pending.
+
+/*
+ * SEND NEARBY MEET & GREET INVITATIONS
+ *
+ * Sends one invitation per event to eligible
+ * Jimny owners within approximately 10 km.
+ *
+ * Nearby locations are approximate and
+ * must have been updated within 24 hours.
+ */
+
+export const sendNearbyMeetAndGreetInvites = onCall(
+  {
+    region: "africa-south1",
+    timeoutSeconds: 120,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be signed in."
+      );
+    }
+
+    const senderId = request.auth.uid;
+    const {experienceId, latitude, longitude} = request.data ?? {};
+
+    if (
+      typeof experienceId !== "string" ||
+      !/^[A-Za-z0-9]{1,128}$/.test(experienceId) ||
+      typeof latitude !== "number" ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Valid event and location details are required."
+      );
+    }
+
+    const db = getFirestore();
+
+    const member = await db
+      .collection("privateUserData")
+      .doc(senderId)
+      .get();
+
+    if (
+      !member.exists ||
+      (member.data()?.accountStatus ?? "active") !== "active"
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "Your account is not active."
+      );
+    }
+
+    const eventRef = db.collection("experiences").doc(experienceId);
+    const eventSnap = await eventRef.get();
+
+    if (!eventSnap.exists) {
+      throw new HttpsError("not-found", "Meet & Greet not found.");
+    }
+
+    const event = eventSnap.data()!;
+
+    if (
+      event.createdBy !== senderId ||
+      event.eventType !== "meetAndGreet"
+    ) {
+      throw new HttpsError(
+        "permission-denied",
+        "You cannot send invitations for this event."
+      );
+    }
+
+    if (
+      !event.startsAt ||
+      typeof event.startsAt.toMillis !== "function" ||
+      event.startsAt.toMillis() <= Date.now()
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "The Meet & Greet must be in the future."
+      );
+    }
+
+    const rad = (value: number) => value * Math.PI / 180;
+
+    const distanceKm = (
+      lat1: number,
+      lon1: number,
+      lat2: number,
+      lon2: number
+    ) => {
+      const dLat = rad(lat2 - lat1);
+      const dLon = rad(lon2 - lon1);
+
+      const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(rad(lat1)) *
+        Math.cos(rad(lat2)) *
+        Math.sin(dLon / 2) ** 2;
+
+      return 6371 * 2 * Math.atan2(
+        Math.sqrt(h),
+        Math.sqrt(Math.max(0, 1 - h))
+      );
+    };
+
+    // Match the existing approximate-location grid.
+    const grid = 0.02;
+    const originLat = Math.round(latitude / grid) * grid;
+    const originLon = Math.round(longitude / grid) * grid;
+
+    const presenceSnapshot = await db
+      .collection("nearbyPresence")
+      .where("enabled", "==", true)
+      .get();
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
+    const recipients = presenceSnapshot.docs.filter((snapshot) => {
+      if (snapshot.id === senderId) return false;
+
+      const presence = snapshot.data();
+
+      if (
+        typeof presence.latitude !== "number" ||
+        typeof presence.longitude !== "number" ||
+        !presence.updatedAt ||
+        typeof presence.updatedAt.toMillis !== "function" ||
+        presence.updatedAt.toMillis() < cutoff
+      ) {
+        return false;
+      }
+
+      return distanceKm(
+        originLat,
+        originLon,
+        presence.latitude,
+        presence.longitude
+      ) <= 10;
+    });
+
+    const senderSnap = await db
+      .collection("users")
+      .doc(senderId)
+      .get();
+
+    const organiserName =
+      senderSnap.data()?.fullName || "A Jimny owner";
+
+    let sent = 0;
+
+    // Deterministic IDs prevent duplicate invitations on retry.
+    // create() never overwrites an existing RSVP response.
+    for (const recipient of recipients) {
+      const recipientId = recipient.id;
+
+      const recipientAccount = await db
+        .collection("privateUserData")
+        .doc(recipientId)
+        .get();
+
+      if (
+        !recipientAccount.exists ||
+        (recipientAccount.data()?.accountStatus ?? "active") !== "active"
+      ) {
+        continue;
+      }
+
+      const notificationRef = db
+        .collection("users")
+        .doc(recipientId)
+        .collection("notifications")
+        .doc(`invite_${experienceId}`);
+
+      try {
+        await notificationRef.create({
+          type: "invite",
+          senderId,
+          recipientId,
+          experienceId,
+          title: "You're invited to a Meet & Greet! 🚙",
+          body: `${organiserName} invited you to ${event.title} at ${event.location}.`,
+          rsvpStatus: "pending",
+          isRead: false,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        sent++;
+      } catch (error: unknown) {
+        // Existing invitations must never be overwritten.
+        const code = (error as {code?: number | string})?.code;
+
+        if (code === 6 || code === "already-exists") {
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    return {
+      success: true,
+      sent,
+      eligible: recipients.length,
+    };
+  }
+);
