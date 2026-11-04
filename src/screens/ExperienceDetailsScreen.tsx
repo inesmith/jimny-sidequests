@@ -107,6 +107,9 @@ export default function ExperienceDetailsScreen({
   const [isMeetAndGreet, setIsMeetAndGreet] = useState(
     experience.eventType === "meetAndGreet"
   );
+  const [coverImageURL, setCoverImageURL] = useState<string | null>(
+    experience.imageURL ?? null
+  );
   const [meetEventStatus, setMeetEventStatus] = useState("upcoming");
   const [meetStartsAt, setMeetStartsAt] = useState<Date | null>(null);
   const [isLoadingRsvp, setIsLoadingRsvp] = useState(true);
@@ -128,6 +131,11 @@ export default function ExperienceDetailsScreen({
         }
         const data = eventSnapshot.data();
         setIsMeetAndGreet(true);
+        setCoverImageURL(
+          typeof data.imageURL === "string" && data.imageURL.trim()
+            ? data.imageURL
+            : null
+        );
         setOrganizerId(typeof data.createdBy === "string" ? data.createdBy : null);
         setMeetEventStatus(data.status ?? "upcoming");
         setMeetStartsAt(data.startsAt?.toDate?.() ?? null);
@@ -617,11 +625,17 @@ export default function ExperienceDetailsScreen({
             bounces={false}
           >
             {/* EXPERIENCE IMAGE */}
-            {experience.imageURL ? (
+            {coverImageURL ? (
               <Image
-                source={{ uri: experience.imageURL }}
+                source={{ uri: coverImageURL }}
                 style={styles.heroPlaceholder}
                 resizeMode="cover"
+                onError={(error) => {
+                  console.error(
+                    "Unable to load experience cover image:",
+                    error.nativeEvent.error
+                  );
+                }}
               />
             ) : (
               <View style={styles.heroPlaceholder}>
