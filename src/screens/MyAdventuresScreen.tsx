@@ -23,6 +23,7 @@ import { onAuthStateChanged } from "firebase/auth";
 
 import { auth, db } from "../firebase/firebase";
 import { allQuests } from "../data/quests";
+import { getStampImage } from "../data/stampImages";
 import type { Quest } from "./HomeScreen";
 import {
   colors,
@@ -419,7 +420,16 @@ export default function MyAdventuresScreen({
             My Adventures
           </Text>
 
-          <View style={styles.headerMenu} />
+          <Pressable
+            style={styles.headerMenu}
+            hitSlop={10}
+          >
+            <MaterialIcons
+              name="more-horiz"
+              size={26}
+              color={colors.text}
+            />
+          </Pressable>
         </View>
 
         {/* CONTENT */}
@@ -781,15 +791,20 @@ function CompletedQuestCard({
       onPress={onPress}
     >
       <View
-        style={
-          styles.completedStamp
-        }
+        style={[
+          styles.completedStamp,
+          (getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title)) && styles.completedStampWithArtwork,
+        ]}
       >
-        <MaterialIcons
-          name="workspace-premium"
-          size={31}
-          color={colors.text}
-        />
+        {getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title) ? (
+          <Image
+            source={(getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title))!}
+            style={styles.completedStampArtwork}
+            resizeMode="contain"
+          />
+        ) : (
+          <MaterialIcons name="workspace-premium" size={31} color={colors.text} />
+        )}
       </View>
 
       <View
@@ -1140,6 +1155,16 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor:
       "#F4F5F7",
+  },
+
+  completedStampWithArtwork: {
+    borderWidth: 0,
+    backgroundColor: "transparent",
+  },
+
+  completedStampArtwork: {
+    width: "100%",
+    height: "100%",
   },
 
   completedQuestContent: {

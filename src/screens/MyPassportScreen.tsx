@@ -24,6 +24,7 @@ import { auth, db } from "../firebase/firebase";
 import { colors, fonts } from "../theme/theme";
 import { allQuests } from "../data/quests";
 import BottomNav from "../components/BottomNav";
+import { getStampImage } from "../data/stampImages";
 
 /*
  * PASSPORT BACKGROUNDS
@@ -90,6 +91,7 @@ type PassportData = {
 type StampSlot = {
   id: string;
   name: string;
+  image?: number;
 };
 
 // Keep passport slots in sync with the actual Side Quests.
@@ -97,6 +99,7 @@ type StampSlot = {
 const stampSlots: StampSlot[] = allQuests.map((quest) => ({
   id: quest.id,
   name: quest.stampTitle || quest.title,
+  image: getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title),
 }));
 
 const PASSPORT_STAMP_TOTAL = stampSlots.length;
@@ -712,12 +715,12 @@ function StampPosition({
   return (
     <View style={styles.stampPosition}>
       {earned ? (
-        <View style={styles.earnedStamp}>
-          <MaterialIcons
-            name="verified"
-            size={31}
-            color={colors.orange}
-          />
+        <View style={[styles.earnedStamp, slot.image && styles.earnedStampWithArtwork]}>
+          {slot.image ? (
+            <Image source={slot.image} style={styles.stampArtwork} resizeMode="contain" />
+          ) : (
+            <MaterialIcons name="verified" size={31} color={colors.orange} />
+          )}
         </View>
       ) : (
         <View style={styles.lockedStamp}>
@@ -1225,6 +1228,16 @@ const styles =
 
       backgroundColor:
         "rgba(255,255,255,0.25)",
+    },
+
+    earnedStampWithArtwork: {
+      borderWidth: 0,
+      backgroundColor: "transparent",
+    },
+
+    stampArtwork: {
+      width: "100%",
+      height: "100%",
     },
 
     stampName: {
