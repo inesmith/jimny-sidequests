@@ -11,6 +11,11 @@ import {
   Inter_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import { isRegistrationInProgress } from "./src/services/registrationState";
 import {
   ActivityIndicator,
@@ -124,6 +129,9 @@ type ExperienceDetailsOrigin =
 export default function App() {
   const [screen, setScreen] =
     useState<Screen>("landing");
+
+  const [questDetailsBackScreen, setQuestDetailsBackScreen] =
+    useState<"home" | "myAdventures">("home");
 
   /*
    * AUTH STARTUP
@@ -915,6 +923,7 @@ export default function App() {
    */
   const openQuestDetails =
     async (quest: Quest) => {
+      setQuestDetailsBackScreen(screen === "myAdventures" ? "myAdventures" : "home");
       setSelectedQuest(
         quest
       );
@@ -1577,11 +1586,7 @@ export default function App() {
             selectedQuestProgress?.status ===
             "active"
           }
-          onBack={() =>
-            setScreen(
-              "home"
-            )
-          }
+          onBack={() => setScreen(questDetailsBackScreen)}
           onExplore={() =>
             setScreen(
               "home"
@@ -1957,6 +1962,77 @@ export default function App() {
     );
   };
 
+    const handleSwipeBack = () => {
+    switch (screen) {
+      case "notifications":
+        setScreen("home");
+        break;
+
+      case "questDetails":
+        setScreen(questDetailsBackScreen);
+        break;
+
+      case "questTracker":
+        setScreen("questDetails");
+        break;
+
+      case "upcomingExperiences":
+        setScreen(upcomingExperiencesBackScreen);
+        break;
+
+      case "experienceDetails":
+        setScreen(experienceDetailsBackScreen);
+        break;
+
+      case "myAdventures":
+      case "myPassport":
+      case "myExperiences":
+      case "editProfile":
+      case "createPassport":
+        setScreen("myProfile");
+        break;
+
+      case "editPassport":
+        setScreen("myPassport");
+        break;
+
+      default:
+        break;
+    }
+  };
+
+    const swipeBackEnabled = [
+    "notifications",
+    "questDetails",
+    "questTracker",
+    "upcomingExperiences",
+    "experienceDetails",
+    "myAdventures",
+    "myPassport",
+    "myExperiences",
+    "editProfile",
+    "createPassport",
+    "editPassport",
+  ].includes(screen);
+
+    const swipeBackGesture = Gesture.Pan()
+    .enabled(swipeBackEnabled)
+    .runOnJS(true)
+    .activeOffsetX(25)
+    .failOffsetY([-20, 20])
+    .onEnd((event) => {
+      const startedAtLeftEdge =
+        event.absoluteX - event.translationX <= 35;
+
+      if (
+        startedAtLeftEdge &&
+        event.translationX > 80 &&
+        Math.abs(event.translationY) < 70
+      ) {
+        handleSwipeBack();
+      }
+    });
+
   /*
    * GLOBAL LOADING
    */
@@ -1987,14 +2063,18 @@ export default function App() {
   }
 
   return (
+  <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
-      <StatusBar
-        style="dark"
-      />
+      <StatusBar style="dark" />
 
-      {renderScreen()}
+      <GestureDetector gesture={swipeBackGesture}>
+        <View style={{ flex: 1 }}>
+          {renderScreen()}
+        </View>
+      </GestureDetector>
     </SafeAreaProvider>
-  );
+  </GestureHandlerRootView>
+);
 }
 
 const styles =
