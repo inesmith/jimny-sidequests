@@ -207,16 +207,7 @@ export default function HomeScreen({
             Explore Side Quests
           </Text>
 
-          <Pressable
-            style={styles.headerIconButton}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name="more-horiz"
-              size={29}
-              color={colors.text}
-            />
-          </Pressable>
+          <View style={styles.headerIconButton} />
         </View>
 
         {/* MAIN CONTENT */}

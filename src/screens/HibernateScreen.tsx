@@ -1731,12 +1731,16 @@ export default function HibernateScreen({
                           }}
                           style={[
                             styles.waveButton,
-                            (owner.friendshipStatus === "sent" ||
-                              owner.friendshipStatus === "friends") &&
+                            owner.friendshipStatus === "sent" &&
+                              styles.waveButtonPending,
+                            owner.friendshipStatus === "friends" &&
                               styles.waveButtonActive,
                           ]}
                         >
-                          <Text style={styles.waveButtonText}>
+                          <Text style={[
+                            styles.waveButtonText,
+                            owner.friendshipStatus === "sent" && { color: colors.white },
+                          ]}>
                             {waveBusy === owner.id
                               ? "Sending..."
                               : owner.friendshipStatus === "friends"
@@ -2497,6 +2501,11 @@ const styles = StyleSheet.create({
 
   waveButtonActive: {
     backgroundColor: colors.orange,
+  },
+
+  waveButtonPending: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
   },
 
   waveButtonText: {

@@ -15,6 +15,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
+  where,
   Timestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -49,6 +51,12 @@ type PassportData = {
   stampCount?: number;
 };
 
+type JimnyFriend = {
+  id: string;
+  name: string;
+  profilePhotoURL: string | null;
+};
+
 type CompletedQuest = {
   quest: Quest;
   completedAt: Timestamp | null;
@@ -69,6 +77,9 @@ export default function MyAdventuresScreen({
   ] = useState<CompletedQuest[]>([]);
 
   const [profilePhotoURL, setProfilePhotoURL] = useState<string | null>(null);
+  const [friends, setFriends] = useState<JimnyFriend[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+  const [friendsError, setFriendsError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -229,24 +240,58 @@ export default function MyAdventuresScreen({
     loadAdventures();
   }, []);
 
+  // Mutual waves are friendships, regardless of nearby discovery visibility.
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        if (active) {
+          setFriends([]);
+          setFriendsLoading(false);
+        }
+        return;
+      }
+      if (active) {
+        setFriendsLoading(true);
+        setFriendsError("");
+      }
+      try {
+        const [sent, received] = await Promise.all([
+          getDocs(query(collection(db, "waves"), where("senderId", "==", user.uid))),
+          getDocs(query(collection(db, "waves"), where("recipientId", "==", user.uid))),
+        ]);
+        const friendIds = new Set<string>();
+        for (const waveDoc of [...sent.docs, ...received.docs]) {
+          const wave = waveDoc.data();
+          if (wave.status !== "friends") continue;
+          const otherId = wave.senderId === user.uid ? wave.recipientId : wave.senderId;
+          if (typeof otherId === "string" && otherId !== user.uid) friendIds.add(otherId);
+        }
+        const loadedFriends = await Promise.all([...friendIds].map(async (id) => {
+          const userSnap = await getDoc(doc(db, "users", id));
+          const profile = userSnap.data();
+          return {
+            id,
+            name: typeof profile?.fullName === "string" && profile.fullName.trim()
+              ? profile.fullName : "Jimny Owner",
+            profilePhotoURL: typeof profile?.profilePhotoURL === "string"
+              ? profile.profilePhotoURL : null,
+          } satisfies JimnyFriend;
+        }));
+        if (active) setFriends(loadedFriends.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (error) {
+        console.error("Unable to load Jimny friends:", error);
+        if (active) setFriendsError("Couldn't load your friends. Please try again later.");
+      } finally {
+        if (active) setFriendsLoading(false);
+      }
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
   /*
    * CALCULATIONS
    */
-  const completedQuestIds =
-    new Set(
-      completedQuests.map(
-        (item) => item.quest.id
-      )
-    );
-
-  const availableQuests =
-    allQuests.filter(
-      (quest) =>
-        !completedQuestIds.has(
-          quest.id
-        )
-    );
-
   const totalQuestCount =
     allQuests.length;
 
@@ -374,16 +419,7 @@ export default function MyAdventuresScreen({
             My Adventures
           </Text>
 
-          <Pressable
-            style={styles.headerMenu}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name="more-horiz"
-              size={26}
-              color={colors.text}
-            />
-          </Pressable>
+          <View style={styles.headerMenu} />
         </View>
 
         {/* CONTENT */}
@@ -551,68 +587,38 @@ export default function MyAdventuresScreen({
               )}
             </View>
 
-            {/* STILL AVAILABLE */}
+            {/* MY FRIENDS */}
             <View style={styles.section}>
-              <Text
-                style={
-                  styles.sectionTitle
-                }
-              >
-                STILL AVAILABLE
-              </Text>
-
-              {availableQuests.length >
-              0 ? (
-                <View
-                  style={
-                    styles.questList
-                  }
-                >
-                  {availableQuests.map(
-                    (quest) => (
-                      <AvailableQuestCard
-                        key={
-                          quest.id
-                        }
-                        quest={quest}
-                        onPress={() =>
-                          onQuestPress?.(
-                            quest
-                          )
-                        }
-                      />
-                    )
-                  )}
+              <Text style={styles.sectionTitle}>MY FRIENDS</Text>
+              {friendsLoading ? (
+                <ActivityIndicator color={colors.green} />
+              ) : friendsError ? (
+                <Text style={styles.emptyBody}>{friendsError}</Text>
+              ) : friends.length > 0 ? (
+                <View style={styles.questList}>
+                  {friends.map((friend) => (
+                    <View key={friend.id} style={styles.friendCard}>
+                      <View style={styles.friendAvatar}>
+                        {friend.profilePhotoURL ? (
+                          <Image source={{ uri: friend.profilePhotoURL }} style={styles.friendPhoto} />
+                        ) : (
+                          <MaterialIcons name="person" size={28} color={colors.textSecondary} />
+                        )}
+                      </View>
+                      <View style={styles.friendInfo}>
+                        <Text style={styles.friendName} numberOfLines={1}>{friend.name}</Text>
+                        <Text style={styles.friendSubtitle}>Jimny friend</Text>
+                      </View>
+                      <MaterialIcons name="people" size={21} color={colors.green} marginRight={8} />
+                    </View>
+                  ))}
                 </View>
               ) : (
-                <View
-                  style={
-                    styles.allCompleteCard
-                  }
-                >
-                  <MaterialIcons
-                    name="emoji-events"
-                    size={31}
-                    color={
-                      colors.green
-                    }
-                  />
-
-                  <Text
-                    style={
-                      styles.allCompleteTitle
-                    }
-                  >
-                    Every Side Quest completed!
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.allCompleteBody
-                    }
-                  >
-                    You've completed every quest
-                    currently available.
+                <View style={styles.emptyCard}>
+                  <MaterialIcons name="people-outline" size={28} color={colors.green} />
+                  <Text style={styles.emptyTitle}>Your Jimny crew starts here!</Text>
+                  <Text style={styles.emptyBody}>
+                    Wave at another Jimny owner. When they wave back, they'll appear here.
                   </Text>
                 </View>
               )}
@@ -812,56 +818,6 @@ function CompletedQuestCard({
           )}
         </Text>
       </View>
-
-      <View
-        style={styles.categoryTag}
-      >
-        <Text
-          style={
-            styles.categoryTagText
-          }
-          numberOfLines={1}
-        >
-          {quest.category}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-/*
- * AVAILABLE QUEST
- */
-function AvailableQuestCard({
-  quest,
-  onPress,
-}: {
-  quest: Quest;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.availableCard,
-        pressed &&
-          styles.pressed,
-      ]}
-      onPress={onPress}
-    >
-      <View
-        style={
-          styles.availableCircle
-        }
-      />
-
-      <Text
-        style={
-          styles.availableTitle
-        }
-        numberOfLines={1}
-      >
-        {quest.title}
-      </Text>
 
       <View
         style={styles.categoryTag}
@@ -1231,52 +1187,21 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
-  /*
-   * AVAILABLE QUEST
-   */
-  availableCard: {
-    width: "100%",
-    minHeight: 57,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderColor:
-      colors.orange,
-    borderRadius: 4,
-    backgroundColor:
-      colors.background,
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 3,
+  /* MY FRIENDS */
+  friendCard: {
+    width: "100%", minHeight: 70, flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.2,
+    borderColor: colors.green, borderRadius: 4, backgroundColor: colors.background,
   },
-
-  availableCircle: {
-    width: 11,
-    height: 11,
-    flexShrink: 0,
-    borderWidth: 1,
-    borderColor:
-      "#A7B1BF",
-    borderRadius: 6,
+  friendAvatar: {
+    width: 46, height: 46, borderRadius: 23, borderWidth: 1.5,
+    borderColor: colors.green, alignItems: "center", justifyContent: "center",
+    overflow: "hidden", backgroundColor: "#F4F5F7",
   },
-
-  availableTitle: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-    marginRight: 8,
-    fontFamily:
-      fonts.extraBold,
-    fontSize: 13,
-    color: colors.text,
-  },
+  friendPhoto: { width: "100%", height: "100%" },
+  friendInfo: { flex: 1, minWidth: 0, marginLeft: 12 },
+  friendName: { fontFamily: fonts.extraBold, fontSize: 13, color: colors.text },
+  friendSubtitle: { marginTop: 3, fontFamily: fonts.regular, fontSize: 11, color: colors.textSecondary },
 
   /*
    * EMPTY STATES
