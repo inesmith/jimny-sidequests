@@ -15,12 +15,23 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import {
+  doc,
+  getDocFromServer,
+} from "firebase/firestore";
+
+import { getFunctions, httpsCallable } from "firebase/functions";
+
+import { auth, db } from "../firebase/firebase";
+
+import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signOut,
 } from "firebase/auth";
 
-import { auth } from "../firebase/firebase";
 import { colors, fonts, spacing } from "../theme/theme";
+
+const accountFunctions = getFunctions(auth.app, "africa-south1");
 
 type LoginScreenProps = {
   onSignUp: () => void;
@@ -41,56 +52,162 @@ export default function LoginScreen({
   const trimmedEmail = email.trim();
 
   const handleLogin = async () => {
-    if (!trimmedEmail || !password) {
+  if (!trimmedEmail || !password) {
+    Alert.alert(
+      "Missing details",
+      "Please enter your email address and password."
+    );
+    return;
+  }
+
+  setIsLoggingIn(true);
+
+  try {
+    const credential = await signInWithEmailAndPassword(
+      auth,
+      trimmedEmail,
+      password
+    );
+
+    const user = credential.user;
+
+    // Check the account status directly from Firestore.
+    const accountSnapshot = await getDocFromServer(
+      doc(db, "privateUserData", user.uid)
+    );
+
+    // A missing Firestore account is an incomplete registration,
+    // never an active account.
+    if (!accountSnapshot.exists()) {
+      await signOut(auth);
       Alert.alert(
-        "Missing details",
-        "Please enter your email address and password."
+        "Registration incomplete",
+        "Your sign-up wasn't completed. Please contact support so we can help finish your registration."
       );
       return;
     }
 
-    setIsLoggingIn(true);
+    const accountStatus = accountSnapshot.data().accountStatus;
 
-    try {
-      await signInWithEmailAndPassword(
-        auth,
-        trimmedEmail,
-        password
+    if (accountStatus === "deletionPending") {
+      await signOut(auth);
+
+      Alert.alert(
+        "Account unavailable",
+        "This account is pending deletion and cannot be reactivated."
+      );
+      return;
+    }
+
+    if (accountStatus === "deactivated") {
+      Alert.alert(
+        "Welcome back, Adventurer! 🚙",
+        "Your account is currently deactivated. Would you like to reactivate it? Your passport, stamps and Side Quests are waiting for you.",
+        [
+          {
+            text: "Not now",
+            style: "cancel",
+            onPress: async () => {
+              await signOut(auth);
+            },
+          },
+          {
+            text: "Reactivate",
+            onPress: async () => {
+              setIsLoggingIn(true);
+
+              try {
+                const reactivate = httpsCallable(
+                  accountFunctions,
+                  "reactivateMyAccount"
+                );
+
+                await reactivate();
+
+                // Refresh authentication before entering the app.
+                await auth.currentUser?.getIdToken(true);
+
+                onLogin();
+              } catch (error) {
+                console.error(
+                  "Account reactivation failed:",
+                  error
+                );
+
+                await signOut(auth);
+
+                Alert.alert(
+                  "Reactivation failed",
+                  "We couldn't reactivate your account. Please try again."
+                );
+              } finally {
+                setIsLoggingIn(false);
+              }
+            },
+          },
+        ],
+        {
+          cancelable: false,
+        }
       );
 
-      onLogin();
-    } catch (error: any) {
-      let message =
-        "We couldn't log you in. Please check your details and try again.";
-
-      switch (error?.code) {
-        case "auth/invalid-email":
-          message = "Please enter a valid email address.";
-          break;
-
-        case "auth/invalid-credential":
-        case "auth/user-not-found":
-        case "auth/wrong-password":
-          message =
-            "The email address or password you entered is incorrect.";
-          break;
-
-        case "auth/too-many-requests":
-          message =
-            "Too many login attempts were made. Please wait a little while and try again.";
-          break;
-
-        case "auth/network-request-failed":
-          message =
-            "We couldn't connect to the internet. Please check your connection and try again.";
-          break;
-      }
-
-      Alert.alert("Unable to log in", message);
-    } finally {
-      setIsLoggingIn(false);
+      return;
     }
-  };
+
+    if (accountStatus !== "active") {
+      await signOut(auth);
+
+      Alert.alert(
+        "Account unavailable",
+        "Your account cannot be accessed at the moment."
+      );
+      return;
+    }
+
+    // Active account: continue normally.
+    onLogin();
+  } catch (error: any) {
+    // If status verification fails, don't allow access.
+    if (auth.currentUser) {
+      await signOut(auth);
+    }
+
+    let message =
+      "We couldn't log you in. Please check your details and try again.";
+
+    switch (error?.code) {
+      case "auth/invalid-email":
+        message = "Please enter a valid email address.";
+        break;
+
+      case "auth/invalid-credential":
+      case "auth/user-not-found":
+      case "auth/wrong-password":
+        message =
+          "The email address or password you entered is incorrect.";
+        break;
+
+      case "auth/too-many-requests":
+        message =
+          "Too many login attempts were made. Please wait a little while and try again.";
+        break;
+
+      case "auth/network-request-failed":
+      case "unavailable":
+        message =
+          "We couldn't connect to the internet. Please check your connection and try again.";
+        break;
+
+      default:
+        message =
+          "We couldn't verify your account. Please try again.";
+    }
+
+    Alert.alert("Unable to log in", message);
+  } finally {
+    setIsLoggingIn(false);
+  }
+};
 
   const handleForgotPassword = async () => {
     if (!trimmedEmail) {

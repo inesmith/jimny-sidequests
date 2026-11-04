@@ -11,6 +11,7 @@ import {
   Inter_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import { isRegistrationInProgress } from "./src/services/registrationState";
 import {
   ActivityIndicator,
   Alert,
@@ -20,18 +21,23 @@ import {
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   onAuthStateChanged,
+  signOut,
 } from "firebase/auth";
+
 import {
   collection,
   doc,
   getDocs,
   runTransaction,
   getDoc,
+  getDocFromServer,
   serverTimestamp,
+  getDocsFromServer,
   setDoc,
   Timestamp,
   updateDoc,
 } from "firebase/firestore";
+
 
 import EditProfileScreen from "./src/screens/EditProfileScreen";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -296,57 +302,101 @@ export default function App() {
    * RESTORE SAVED LOGIN
    */
   useEffect(() => {
-    let hasResolvedInitialAuth =
-      false;
+  let cancelled = false;
+  let hasResolvedInitialAuth = false;
 
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        (user) => {
-          if (hasResolvedInitialAuth && !user) {
+  const unsubscribe = onAuthStateChanged(
+    auth,
+    async (user) => {
+      if (!user) {
+        if (!hasResolvedInitialAuth) {
+          hasResolvedInitialAuth = true;
+          setInitialUserAuthenticated(false);
+          setIsCheckingAuth(false);
+        } else if (!cancelled) {
+          setScreen("login");
+        }
+        return;
+      }
+
+      try {
+        const accountSnapshot = await getDocFromServer(
+          doc(db, "privateUserData", user.uid)
+        );
+
+        if (cancelled || auth.currentUser?.uid !== user.uid) {
+          return;
+        }
+
+        // Fail closed: a missing registration record is not an active member.
+        const status = accountSnapshot.exists()
+          ? accountSnapshot.data().accountStatus
+          : null;
+
+        const isActive = status === "active";
+
+        if (status === "deletionPending") {
+          await signOut(auth);
+
+          if (!hasResolvedInitialAuth) {
+            hasResolvedInitialAuth = true;
+            setInitialUserAuthenticated(false);
+            setIsCheckingAuth(false);
+          }
+
+          setScreen("login");
+          return;
+        }
+
+        if (!isActive && !isRegistrationInProgress()) {
+  // Never allow an inactive or incomplete account into the app.
+  // Keep deactivated accounts signed in so they can reactivate.
+  setScreen("login");
+}
+
+        if (!hasResolvedInitialAuth) {
+          hasResolvedInitialAuth = true;
+          setInitialUserAuthenticated(isActive);
+          setIsCheckingAuth(false);
+        } else if (!isActive && !isRegistrationInProgress()) {
+  setScreen("login");
+}
+      } catch (error) {
+        console.error("Unable to verify account status:", error);
+
+        if (!cancelled) {
+          await signOut(auth);
+
+          if (!hasResolvedInitialAuth) {
+            hasResolvedInitialAuth = true;
+            setInitialUserAuthenticated(false);
+            setIsCheckingAuth(false);
+          } else {
             setScreen("login");
           }
-
-          if (
-            !hasResolvedInitialAuth
-          ) {
-            hasResolvedInitialAuth =
-              true;
-
-            setInitialUserAuthenticated(
-              Boolean(user)
-            );
-
-            setIsCheckingAuth(
-              false
-            );
-          }
-        },
-        (error) => {
-          console.error(
-            "Unable to restore authentication session:",
-            error
-          );
-
-          if (
-            !hasResolvedInitialAuth
-          ) {
-            hasResolvedInitialAuth =
-              true;
-
-            setInitialUserAuthenticated(
-              false
-            );
-
-            setIsCheckingAuth(
-              false
-            );
-          }
         }
-      );
+      }
+    },
+    (error) => {
+      console.error("Unable to restore authentication:", error);
 
-    return unsubscribe;
-  }, []);
+      if (!cancelled) {
+        if (!hasResolvedInitialAuth) {
+          hasResolvedInitialAuth = true;
+          setInitialUserAuthenticated(false);
+          setIsCheckingAuth(false);
+        } else {
+          setScreen("login");
+        }
+      }
+    }
+  );
+
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
+}, []);
 
   /*
    * LEAVE STARTUP LANDING
@@ -1243,7 +1293,24 @@ export default function App() {
    */
   const renderScreen = () => {
     if (screen !== "login" && screen !== "signup" && screen !== "landing" && !auth.currentUser) {
-      return <LoginScreen onSignUp={() => setScreen("signup")} onLogin={() => { if (auth.currentUser) setScreen("home"); }} />;
+      return <LoginScreen onSignUp={() => setScreen("signup")} onLogin={async () => {
+          const user = auth.currentUser;
+          if (!user) return;
+          try {
+            const account = await getDocFromServer(doc(db, "privateUserData", user.uid));
+            if (auth.currentUser?.uid !== user.uid) return;
+            if (account.exists() && account.data().accountStatus === "active") {
+              setScreen("home");
+            } else {
+              if (account.data()?.accountStatus !== "deactivated") await signOut(auth);
+              Alert.alert("Account unavailable", "Your account is not active yet.");
+            }
+          } catch (error) {
+            console.error("Unable to verify account before navigation:", error);
+            await signOut(auth);
+            Alert.alert("Unable to verify account", "Please check your connection and try again.");
+          }
+        }} />;
     }
 
     /*
@@ -1868,8 +1935,23 @@ export default function App() {
             "signup"
           )
         }
-        onLogin={() => {
-          if (auth.currentUser) setScreen("home");
+        onLogin={async () => {
+          const user = auth.currentUser;
+          if (!user) return;
+          try {
+            const account = await getDocFromServer(doc(db, "privateUserData", user.uid));
+            if (auth.currentUser?.uid !== user.uid) return;
+            if (account.exists() && account.data().accountStatus === "active") {
+              setScreen("home");
+            } else {
+              if (account.data()?.accountStatus !== "deactivated") await signOut(auth);
+              Alert.alert("Account unavailable", "Your account is not active yet.");
+            }
+          } catch (error) {
+            console.error("Unable to verify account before navigation:", error);
+            await signOut(auth);
+            Alert.alert("Unable to verify account", "Please check your connection and try again.");
+          }
         }}
       />
     );

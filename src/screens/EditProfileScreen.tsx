@@ -16,6 +16,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as ImagePicker from "expo-image-picker";
 import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  sendPasswordResetEmail,
   updateEmail,
   updatePassword,
   updateProfile,
@@ -62,8 +65,10 @@ export default function EditProfileScreen({
     useState("");
   const [phone, setPhone] =
     useState("");
-  const [newPassword, setNewPassword] =
-    useState("");
+const [currentPassword, setCurrentPassword] = useState("");
+const [newPassword, setNewPassword] = useState("");
+const [confirmPassword, setConfirmPassword] = useState("");
+const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [
     showPassword,
     setShowPassword,
@@ -292,7 +297,7 @@ export default function EditProfileScreen({
                 );
               const response =
                 await fetch(
-                  `https\://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedInput}&key=${placesApiKey}&components=country:za`
+                  `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodedInput}&key=${placesApiKey}&components=country:za`
                 );
               const data =
                 await response.json();
@@ -358,7 +363,7 @@ export default function EditProfileScreen({
       try {
         const response =
           await fetch(
-            `https\://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
+            `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(
               prediction.place_id
             )}&fields=place_id,formatted_address&key=${placesApiKey}`
           );
@@ -463,8 +468,6 @@ export default function EditProfileScreen({
           .toLowerCase();
       const trimmedPhone =
         phone.trim();
-      const trimmedPassword =
-        newPassword.trim();
       if (!trimmedName) {
         Alert.alert(
           "Name required",
@@ -480,17 +483,6 @@ export default function EditProfileScreen({
         Alert.alert(
           "Email required",
           "Please enter a valid email address."
-        );
-        return;
-      }
-      if (
-        trimmedPassword &&
-        trimmedPassword.length <
-          6
-      ) {
-        Alert.alert(
-          "Password too short",
-          "Your new password must be at least 6 characters."
         );
         return;
       }
@@ -554,17 +546,6 @@ export default function EditProfileScreen({
           await updateEmail(
             user,
             trimmedEmail
-          );
-        }
-        /*
-         * OPTIONAL PASSWORD CHANGE
-         */
-        if (
-          trimmedPassword
-        ) {
-          await updatePassword(
-            user,
-            trimmedPassword
           );
         }
         /*
@@ -651,7 +632,7 @@ export default function EditProfileScreen({
         ) {
           Alert.alert(
             "Please log in again",
-            "For security, Firebase requires you to log in again before changing your email or password."
+            "For security, Firebase requires you to log in again before changing your email."
           );
         } else if (
           code ===
@@ -687,6 +668,69 @@ export default function EditProfileScreen({
         setIsSaving(false);
       }
     };
+  const handleForgotPassword = async () => {
+    const user = auth.currentUser;
+    if (!user?.email) {
+      Alert.alert("Email unavailable", "We couldn't find an email address for your account.");
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      Alert.alert("Check your email", "If your account is eligible for email password reset, you'll receive a link to create a new password. Check your inbox and spam folder.");
+    } catch (error: any) {
+      console.error("Password reset failed:", error);
+      Alert.alert("Couldn't send reset email", "Please try again later.");
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const user = auth.currentUser;
+    if (!user?.email) {
+      Alert.alert("Account unavailable", "Please log in again.");
+      return;
+    }
+    if (!currentPassword) {
+      Alert.alert("Current password required", "Please enter your current password.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      Alert.alert("Password too short", "Your new password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert("Passwords don't match", "Please make sure both new password fields match.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      Alert.alert("Choose a different password", "Your new password must be different from your current password.");
+      return;
+    }
+    if (isChangingPassword || isSaving) return;
+    setIsChangingPassword(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      Alert.alert("Password updated", "Your password has been changed successfully.");
+    } catch (error: any) {
+      console.error("Password change failed:", error);
+      if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password" || error?.code === "auth/invalid-login-credentials") {
+        Alert.alert("Incorrect password", "Your current password is incorrect. Please try again or use Forgot Password.");
+      } else if (error?.code === "auth/too-many-requests") {
+        Alert.alert("Too many attempts", "Please wait a while before trying again.");
+      } else if (error?.code === "auth/weak-password") {
+        Alert.alert("Weak password", "Please choose a stronger password.");
+      } else {
+        Alert.alert("Couldn't change password", "Please try again.");
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView
@@ -925,66 +969,78 @@ export default function EditProfileScreen({
                 false
               }
             />
-            <FieldLabel
-              text="NEW PASSWORD"
-              optional
-            />
-            <View
-              style={
-                styles.passwordWrap
-              }
-            >
+            {/* CHANGE PASSWORD */}
+            <Text style={[styles.sectionTitle, styles.secondSection]}>
+              CHANGE PASSWORD
+            </Text>
+            <Text style={styles.passwordHint}>
+              Verify your current password before creating a new one.
+            </Text>
+            <FieldLabel text="CURRENT PASSWORD" />
+            <View style={styles.passwordWrap}>
               <TextInput
-                value={
-                  newPassword
-                }
-                onChangeText={
-                  setNewPassword
-                }
-                placeholder="Leave blank to keep current password"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Enter current password"
                 placeholderTextColor="#8A8F98"
-                style={
-                  styles.passwordInput
-                }
-                secureTextEntry={
-                  !showPassword
-                }
+                style={styles.passwordInput}
+                secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="password"
               />
-              <Pressable
-                style={
-                  styles.eyeButton
-                }
-                onPress={() =>
-                  setShowPassword(
-                    (current) =>
-                      !current
-                  )
-                }
-                hitSlop={8}
-              >
+              <Pressable style={styles.eyeButton} onPress={() => setShowPassword((value) => !value)} hitSlop={8}>
                 <MaterialIcons
-                  name={
-                    showPassword
-                      ? "visibility-off"
-                      : "visibility"
-                  }
+                  name={showPassword ? "visibility-off" : "visibility"}
                   size={22}
-                  color={
-                    colors.textSecondary
-                  }
+                  color={colors.textSecondary}
                 />
               </Pressable>
             </View>
-            <Text
-              style={
-                styles.passwordHint
-              }
+            <Pressable
+              onPress={handleForgotPassword}
+              disabled={isChangingPassword}
+              style={{ alignSelf: "flex-end", marginTop: 8, marginBottom: 18 }}
             >
-              Only enter a new
-              password if you want
-              to change it.
-            </Text>
+              <Text style={{ fontFamily: fonts.medium, fontSize: 12, color: colors.green, textDecorationLine: "underline" }}>
+                Forgot Password?
+              </Text>
+            </Pressable>
+            <FieldLabel text="NEW PASSWORD" />
+            <TextInput
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="Create a new password"
+              placeholderTextColor="#8A8F98"
+              style={styles.input}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="newPassword"
+            />
+            <FieldLabel text="CONFIRM NEW PASSWORD" />
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Confirm your new password"
+              placeholderTextColor="#8A8F98"
+              style={styles.input}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="newPassword"
+            />
+            <Pressable
+              style={({ pressed }) => [styles.saveButton, (pressed || isChangingPassword) && styles.buttonPressed]}
+              onPress={handleChangePassword}
+              disabled={isChangingPassword || isSaving}
+            >
+              {isChangingPassword ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.saveButtonText}>CREATE NEW PASSWORD</Text>
+              )}
+            </Pressable>
             {/* A LITTLE MORE ABOUT YOU */}
             <Text
               style={[
@@ -1154,9 +1210,7 @@ export default function EditProfileScreen({
               onPress={
                 saveProfile
               }
-              disabled={
-                isSaving
-              }
+              disabled={isSaving || isChangingPassword}
             >
               {isSaving ? (
                 <ActivityIndicator

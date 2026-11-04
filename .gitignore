@@ -40,3 +40,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase debug logs
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+
+# Local backup files
+*.backup.ts
+*.backup.tsx

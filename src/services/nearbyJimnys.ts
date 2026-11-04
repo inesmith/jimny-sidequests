@@ -38,9 +38,13 @@ export async function setNearbyVisibility(
   if (enabled && !location) throw new Error("Location permission required.");
   const ref = doc(db, "nearbyPresence", uid);
   if (!enabled) {
-    await setDoc(ref, { uid, enabled: false, updatedAt: serverTimestamp() }, { merge: true });
-    return;
-  }
+  await setDoc(ref, {
+    uid,
+    enabled: false,
+    updatedAt: serverTimestamp(),
+  });
+  return;
+}
   await setDoc(ref, {
     uid, enabled: true,
     latitude: roundCoordinate(location!.latitude),
@@ -101,22 +105,42 @@ export async function getNearbyOwners(
 
 export async function sendWave(recipientId: string) {
   const senderId = auth.currentUser?.uid;
-  if (!senderId || senderId === recipientId) throw new Error("Invalid wave.");
+
+  if (!senderId || senderId === recipientId) {
+    throw new Error("Invalid wave.");
+  }
+
   const id = waveId(senderId, recipientId);
-  await runTransaction(db, async (tx) => {
-    const ref = doc(db, "waves", id);
-    const snap = await tx.get(ref);
-    if (snap.exists()) throw new Error("A wave already exists between these users.");
-    tx.set(ref, { senderId, recipientId, status: "pending",
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  const ref = doc(db, "waves", id);
+
+  // Create a new Wave without first reading
+  // a document that may not exist.
+  await setDoc(ref, {
+    senderId,
+    recipientId,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
-  const sender = await getDoc(doc(db, "users", senderId));
-  await setDoc(doc(db, "users", recipientId, "notifications", `wave_${id}`), {
-    type: "wave", senderId, recipientId, waveId: id,
-    title: "Someone waved at you! 👋",
-    body: `${sender.data()?.fullName || "A Jimny owner"} sent you a wave.`,
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-  });
+
+  // Notify the recipient.
+  const sender = await getDoc(
+    doc(db, "users", senderId)
+  );
+
+  await setDoc(
+    doc(db, "users", recipientId, "notifications", `wave_${id}`),
+    {
+      type: "wave",
+      senderId,
+      recipientId,
+      waveId: id,
+      title: "Someone waved at you! 👋",
+      body: `${sender.data()?.fullName || "A Jimny owner"} sent you a wave.`,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
+  );
 }
 
 export async function waveBack(senderId: string) {

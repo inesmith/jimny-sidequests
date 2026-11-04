@@ -1,3 +1,4 @@
+
 import {
   getApp,
   getApps,
@@ -6,9 +7,12 @@ import {
 
 import {
   getAuth,
-  getReactNativePersistence,
   initializeAuth,
+  type Auth,
 } from "firebase/auth";
+
+// @ts-expect-error Firebase 13 React Native persistence is not exposed by the public TypeScript declarations.
+import { getReactNativePersistence } from "@firebase/auth";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -56,7 +60,7 @@ const app =
  * to persist the user's session
  * between app restarts.
  */
-let auth;
+let auth: Auth;
 
 try {
   auth = initializeAuth(app, {
@@ -82,7 +86,7 @@ const storage =
 const functions =
   getFunctions(
     app,
-    "us-central1"
+    "africa-south1"
   );
 
 export {

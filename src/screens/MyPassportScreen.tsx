@@ -38,12 +38,14 @@ const passportTwoSource =
   Image.resolveAssetSource(passportTwoImage);
 
 const passportOneAspectRatio =
-  passportOneSource.width /
-  passportOneSource.height;
+  passportOneSource?.width && passportOneSource?.height
+    ? passportOneSource.width / passportOneSource.height
+    : 1;
 
 const passportTwoAspectRatio =
-  passportTwoSource.width /
-  passportTwoSource.height;
+  passportTwoSource?.width && passportTwoSource?.height
+    ? passportTwoSource.width / passportTwoSource.height
+    : 1;
 
 type MyPassportScreenProps = {
   onBack?: () => void;

@@ -735,29 +735,42 @@ useEffect(() => {
       }
     };
 
-  const respondToInvite = async (notification: BackendNotificationItem, response: "accepted" | "declined") => {
-    if (!currentUser || !notification.invitationId || !notification.experienceId) throw new Error("Invitation unavailable");
+  const respondToInvite = async (
+    notification: BackendNotificationItem,
+    response: "accepted" | "declined"
+  ) => {
+    if (!currentUser || !notification.invitationId || !notification.experienceId) {
+      throw new Error("Invitation unavailable");
+    }
+
     const invitationRef = doc(db, "users", currentUser.uid, "notifications", notification.invitationId);
+    const experienceRef = doc(db, "experiences", notification.experienceId);
     const rsvpRef = doc(db, "experiences", notification.experienceId, "rsvps", currentUser.uid);
+
     await runTransaction(db, async (transaction) => {
       const invitation = await transaction.get(invitationRef);
-      if (!invitation.exists() || invitation.data().type !== "invite") throw new Error("Invitation no longer available");
-      const data = invitation.data();
-      if (data.experienceId !== notification.experienceId) throw new Error("Invalid invitation");
-      const experienceRef = doc(db, "experiences", notification.experienceId!);
       const experience = await transaction.get(experienceRef);
-      if (!experience.exists()) throw new Error("Experience no longer available");
-      transaction.set(rsvpRef, { userId: currentUser.uid, status: response, updatedAt: serverTimestamp(), invitationId: notification.invitationId }, { merge: true });
-      transaction.update(invitationRef, { rsvpStatus: response, updatedAt: serverTimestamp() });
-      const organiserId = typeof data.organiserId === "string" ? data.organiserId : null;
-      if (organiserId && organiserId !== currentUser.uid) {
-        const organiserNotification = doc(collection(db, "users", organiserId, "notifications"));
-        transaction.set(organiserNotification, {
-          type: "rsvp", label: "MEET & GREET RSVP", title: response === "accepted" ? "Someone is coming!" : "RSVP update",
-          body: `${currentUser.displayName || "A Jimny owner"} ${response === "accepted" ? "accepted" : "declined"} your invitation.`,
-          experienceId: notification.experienceId, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-        });
+
+      if (!invitation.exists() || invitation.data().type !== "invite" ||
+          invitation.data().experienceId !== notification.experienceId) {
+        throw new Error("Invitation no longer available");
       }
+      if (!experience.exists()) {
+        throw new Error("Experience no longer available");
+      }
+
+      transaction.set(rsvpRef, {
+        userId: currentUser.uid,
+        status: response,
+        updatedAt: serverTimestamp(),
+        invitationId: notification.invitationId,
+      }, { merge: true });
+
+      transaction.update(invitationRef, {
+        rsvpStatus: response,
+        updatedAt: serverTimestamp(),
+      });
+      // The deployed notifyMeetAndGreetRSVP Cloud Function notifies the organiser.
     });
   };
 

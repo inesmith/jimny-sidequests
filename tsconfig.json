@@ -1,6 +1,11 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
-  }
+    "strict": true,
+    "customConditions": ["react-native"]
+  },
+  "exclude": [
+    "node_modules",
+    "index.backup.ts"
+  ]
 }

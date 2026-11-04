@@ -38,7 +38,7 @@ type HomeScreenProps = {
   onProfile?: () => void;
   onQuestPress?: (quest: Quest) => void;
   onUpcomingExperiences?: () => void;
-
+  isLoadingMonthlyQuests?: boolean;
   onNotifications?: () => void;
   notificationCount?: number;
   availableQuests?: Quest[];

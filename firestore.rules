@@ -1,0 +1,417 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // AUTHENTICATION AND ACCOUNT STATUS
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function accountPath(userId) {
+      return /databases/$(database)/documents/privateUserData/$(userId);
+    }
+
+    function activeUser(userId) {
+      return signedIn()
+        && exists(accountPath(userId))
+        && get(accountPath(userId)).data.accountStatus == "active";
+    }
+
+    function active() {
+      return signedIn() && activeUser(request.auth.uid);
+    }
+
+    function isOwner(userId) {
+      return active() && request.auth.uid == userId;
+    }
+
+    function waveParticipant(data) {
+      return active()
+        && (
+          data.senderId == request.auth.uid ||
+          data.recipientId == request.auth.uid
+        );
+    }
+
+    function wavePath(waveId) {
+      return /databases/$(database)/documents/waves/$(waveId);
+    }
+
+    function experiencePath(experienceId) {
+      return /databases/$(database)/documents/experiences/$(experienceId);
+    }
+
+    // PUBLIC MEMBER PROFILES
+
+    match /users/{userId} {
+
+      allow read: if active();
+
+      allow create: if isOwner(userId)
+        && !request.resource.data.keys().hasAny([
+          "accountStatus"
+        ]);
+
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data)
+          .affectedKeys().hasAny([
+            "accountStatus"
+          ]);
+
+      allow delete: if false;
+    }
+
+    // PRIVATE MEMBER INFORMATION
+
+
+match /privateUserData/{userId} {
+
+  // Members can read their own private information,
+  // including when their account is deactivated.
+  allow read: if signedIn()
+    && request.auth.uid == userId;
+
+  // Registration is handled by Cloud Functions.
+  allow create: if false;
+
+  // Members can only update approved profile fields.
+  allow update: if isOwner(userId)
+    && request.resource.data.diff(resource.data)
+      .affectedKeys().hasOnly([
+        "uid",
+        "email",
+        "phone",
+        "homeLocation",
+        "updatedAt"
+      ])
+    && request.resource.data.uid == userId
+    && request.resource.data.email is string
+    && (
+      request.resource.data.phone == null
+      || request.resource.data.phone is string
+    )
+    && (
+      request.resource.data.homeLocation == null
+      || (
+        request.resource.data.homeLocation is map
+        && request.resource.data.homeLocation.keys().hasOnly([
+          "placeId",
+          "formattedAddress"
+        ])
+        && request.resource.data.homeLocation.placeId is string
+        && request.resource.data.homeLocation.formattedAddress is string
+      )
+    )
+    && request.resource.data.updatedAt == request.time;
+
+  // Account deletion is handled by Cloud Functions.
+  allow delete: if false;
+}
+
+
+    // ADVENTURE PASSPORTS
+
+    match /passports/{userId} {
+
+      allow read: if active();
+
+      allow create, update: if isOwner(userId);
+
+      allow delete: if false;
+    }
+
+    // NEARBY JIMNYS
+
+    match /nearbyPresence/{userId} {
+
+  allow read: if active()
+    && (
+      request.auth.uid == userId
+      || resource.data.enabled == true
+    );
+
+  allow create, update: if isOwner(userId)
+    && request.resource.data.keys().hasOnly([
+      "uid",
+      "enabled",
+      "latitude",
+      "longitude",
+      "updatedAt"
+    ])
+    && request.resource.data.uid == userId
+    && request.resource.data.enabled is bool
+    && request.resource.data.updatedAt == request.time
+    && (
+      request.resource.data.enabled == false
+      ||
+      (
+        request.resource.data.latitude is number
+        && request.resource.data.longitude is number
+        && request.resource.data.latitude >= -90
+        && request.resource.data.latitude <= 90
+        && request.resource.data.longitude >= -180
+        && request.resource.data.longitude <= 180
+      )
+    );
+
+  allow delete: if isOwner(userId);
+}
+
+    // WAVES AND FRIENDSHIPS
+
+    match /waves/{waveId} {
+
+      allow get: if active()
+  && (
+    (
+      exists(wavePath(waveId))
+      && waveParticipant(resource.data)
+    )
+    ||
+    (
+      !exists(wavePath(waveId))
+      && waveId.matches(
+        "^.*_" + request.auth.uid + "$"
+      )
+    )
+  );
+
+      allow list: if waveParticipant(resource.data);
+
+      allow create: if active()
+        && request.resource.data.keys().hasOnly([
+          "senderId",
+          "recipientId",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.recipientId is string
+        && activeUser(request.resource.data.recipientId)
+        && request.resource.data.recipientId != request.auth.uid
+        && waveId == (
+          request.resource.data.senderId <
+          request.resource.data.recipientId
+            ? request.resource.data.senderId + "_" +
+              request.resource.data.recipientId
+            : request.resource.data.recipientId + "_" +
+              request.resource.data.senderId
+        )
+        && request.resource.data.status == "pending"
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if active()
+        && activeUser(resource.data.senderId)
+        && resource.data.recipientId == request.auth.uid
+        && resource.data.status == "pending"
+        && request.resource.data.status == "friends"
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            "status",
+            "updatedAt"
+          ])
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // NOTIFICATION READ STATES
+
+    match /users/{userId}/notificationStates/{notificationId} {
+
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    // DIRECT NOTIFICATIONS
+
+    match /users/{userId}/notifications/{notificationId} {
+
+      allow read: if isOwner(userId);
+
+      // MEET & GREET INVITATIONS
+
+      // INCOMING WAVE
+
+      allow create: if active()
+        && activeUser(userId)
+        && request.auth.uid != userId
+        && request.resource.data.type == "wave"
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.recipientId == userId
+        && request.resource.data.waveId is string
+        && notificationId ==
+          "wave_" + request.resource.data.waveId
+        && exists(wavePath(request.resource.data.waveId))
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.senderId == request.auth.uid
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.recipientId == userId
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.status == "pending"
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "senderId",
+          "recipientId",
+          "waveId",
+          "title",
+          "body",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      // ACCEPTED WAVE
+
+      allow create: if active()
+        && activeUser(userId)
+        && request.auth.uid != userId
+        && request.resource.data.type == "waveAccepted"
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.recipientId == userId
+        && request.resource.data.waveId is string
+        && notificationId ==
+          "waveback_" + request.resource.data.waveId
+        && exists(wavePath(request.resource.data.waveId))
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.senderId == userId
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.recipientId == request.auth.uid
+        && get(
+          wavePath(request.resource.data.waveId)
+        ).data.status == "friends"
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "senderId",
+          "recipientId",
+          "waveId",
+          "title",
+          "body",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      // READ STATUS AND INVITATION RESPONSE
+
+      allow update: if isOwner(userId)
+        && (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              "isRead",
+              "readAt"
+            ])
+          ||
+          (
+            resource.data.type == "invite"
+            && request.resource.data.diff(resource.data)
+              .affectedKeys().hasOnly([
+                "rsvpStatus",
+                "updatedAt"
+              ])
+            && request.resource.data.rsvpStatus
+              in ["accepted", "declined"]
+            && request.resource.data.updatedAt == request.time
+          )
+        );
+
+      allow delete: if isOwner(userId);
+    }
+
+    // VEHICLE ARCHIVES
+
+    match /users/{userId}/vehicleArchives/{archiveId} {
+
+      allow read, create: if isOwner(userId);
+
+      allow update, delete: if false;
+    }
+
+    // SIDE QUESTS
+
+    match /users/{userId}/quests/{questId} {
+
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    // MONTHLY QUEST SELECTIONS
+
+    match /users/{userId}/monthlyQuestSelections/{month} {
+
+      allow read, create, update: if isOwner(userId);
+
+      allow delete: if false;
+    }
+
+    // EXPERIENCE REGISTRATIONS
+
+    match /users/{userId}/experienceRegistrations/{experienceId} {
+
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    // EXPERIENCES AND MEET & GREETS
+
+    match /experiences/{experienceId} {
+
+      allow read: if active();
+
+      allow create: if active()
+        && request.resource.data.createdBy == request.auth.uid;
+
+      // Only the original organiser can edit an experience.
+// The organiser cannot transfer ownership.
+allow update: if active()
+  && resource.data.createdBy == request.auth.uid
+  && request.resource.data.createdBy == resource.data.createdBy;
+
+// Only the original organiser can delete an experience.
+allow delete: if active()
+  && resource.data.createdBy == request.auth.uid;
+    }
+
+    // MEET & GREET RSVPS
+
+    match /experiences/{experienceId}/rsvps/{userId} {
+
+      allow read: if isOwner(userId)
+        || (
+          active()
+          && exists(experiencePath(experienceId))
+          && get(
+            experiencePath(experienceId)
+          ).data.createdBy == request.auth.uid
+        );
+
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "userId",
+          "status",
+          "respondedAt",
+          "updatedAt",
+          "invitationId"
+        ])
+        && request.resource.data.keys().hasAll([
+          "userId",
+          "status"
+        ])
+        && request.resource.data.userId == userId
+        && request.resource.data.status
+          in ["accepted", "declined"]
+        && exists(experiencePath(experienceId));
+
+      allow delete: if false;
+    }
+  }
+}

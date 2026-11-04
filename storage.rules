@@ -1,0 +1,33 @@
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function accountPath(userId) {
+      return /databases/(default)/documents/privateUserData/$(userId);
+    }
+
+    function activeUser(userId) {
+      return signedIn()
+        && firestore.exists(accountPath(userId))
+        && firestore.get(accountPath(userId)).data.accountStatus == "active";
+    }
+
+    function active() {
+      return signedIn() && activeUser(request.auth.uid);
+    }
+
+    match /users/{userId}/{allPaths=**} {
+
+      allow read: if active() && activeUser(userId);
+
+      allow write: if active() && request.auth.uid == userId;
+
+    }
+  }
+}
