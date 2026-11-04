@@ -455,6 +455,7 @@ export default function App() {
     markAllAsRead:
       markAllNotificationsAsRead,
     getExperienceFromNotification,
+    respondToInvite,
   } = useNotifications();
 
   /*
@@ -693,10 +694,9 @@ export default function App() {
          * EXPERIENCE / EVENT UPDATE
          */
         if (
-          backendNotification.type ===
-            "experience" ||
-          backendNotification.type ===
-            "eventUpdate"
+          backendNotification.type === "experience" ||
+          backendNotification.type === "eventUpdate" ||
+          backendNotification.type === "invite"
         ) {
           const experience =
             await getExperienceFromNotification(
@@ -1447,6 +1447,15 @@ export default function App() {
           onNotificationPress={
             handleNotificationPress
           }
+          onRSVP={async (notification, response) => {
+            try {
+              await respondToInvite(notification as BackendNotificationItem, response);
+              await markNotificationAsRead(notification as BackendNotificationItem);
+            } catch (error) {
+              console.error("Unable to respond to invitation:", error);
+              Alert.alert("RSVP failed", "Please try again.");
+            }
+          }}
           onExplore={() =>
             setScreen(
               "home"

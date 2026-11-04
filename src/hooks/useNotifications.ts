@@ -33,6 +33,39 @@ import type {
   NotificationItem,
 } from "../screens/NotificationsScreen";
 
+function eventStart(data: Record<string, any>): Date | null {
+  const timestamp = data.startsAt ?? data.startAt;
+  if (timestamp instanceof Timestamp) return timestamp.toDate();
+  if (timestamp && typeof timestamp.toDate === "function") return timestamp.toDate();
+  const value = data.eventDate || data.date;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value.length === 10 ? `${value}T00:00:00` : value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function eventExpiry(data: Record<string, any>): number | null {
+  const start = eventStart(data);
+  if (!start) return null;
+  const end = new Date(start);
+  end.setHours(23, 59, 59, 999);
+  return end.getTime();
+}
+
+function eventDisplay(data: Record<string, any>) {
+  const start = eventStart(data);
+  const date = typeof data.date === "string" && data.date.trim()
+    ? data.date
+    : start?.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) ?? "";
+  const time = typeof data.time === "string" && data.time.trim()
+    ? data.time
+    : typeof data.eventTime === "string" && data.eventTime.trim()
+      ? data.eventTime
+      : data.startsAt instanceof Timestamp
+        ? start!.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false })
+        : "Time TBC";
+  return { date, time, eventDate: start ? `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,"0")}-${String(start.getDate()).padStart(2,"0")}` : "" };
+}
+
 type ExperienceNotificationData = {
   id: string;
   title: string;
@@ -44,6 +77,7 @@ type ExperienceNotificationData = {
   description: string;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
+  expiresAt: number | null;
 };
 
 type NotificationState = {
@@ -84,6 +118,33 @@ export default function useNotifications() {
   >({});
 
   const [directNotifications, setDirectNotifications] = useState<BackendNotificationItem[]>([]);
+
+  const [registeredIds, setRegisteredIds] = useState<string[]>([]);
+  const [acceptedRsvpIds, setAcceptedRsvpIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!currentUser) { setRegisteredIds([]); return; }
+    return onSnapshot(collection(db, "users", currentUser.uid, "experienceRegistrations"), snapshot => {
+      setRegisteredIds(snapshot.docs.filter(item => item.data().status === "registered").map(item => item.id));
+    }, error => console.error("Unable to track registrations:", error));
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) { setAcceptedRsvpIds([]); return; }
+    let unsubs: Array<() => void> = [];
+    const stop = onSnapshot(query(collection(db, "experiences"), where("eventType", "==", "meetAndGreet")), snapshot => {
+      unsubs.forEach(unsub => unsub());
+      unsubs = snapshot.docs.map(event => onSnapshot(doc(db, "experiences", event.id, "rsvps", currentUser.uid), rsvp => {
+        setAcceptedRsvpIds(previous => {
+          const next = new Set(previous);
+          if (rsvp.data()?.status === "accepted") next.add(event.id);
+          else next.delete(event.id);
+          return [...next];
+        });
+      }, error => console.error("Unable to track RSVP:", error)));
+    }, error => console.error("Unable to track experiences for RSVP:", error));
+    return () => { stop(); unsubs.forEach(unsub => unsub()); };
+  }, [currentUser]);
 
   const [acceptedWaveIds, setAcceptedWaveIds] = useState<string[]>([]);
 
@@ -209,18 +270,8 @@ useEffect(() => {
                     data.category ??
                     "",
 
-                  date:
-                    data.date ??
-                    "",
-
-                  time:
-                    data.time ??
-                    data.eventTime ??
-                    "Time TBC",
-
-                  eventDate:
-                    data.eventDate ??
-                    "",
+                  ...eventDisplay(data),
+                  expiresAt: eventExpiry(data),
 
                   location,
 
@@ -372,7 +423,7 @@ useEffect(() => {
       });
       setDirectNotifications(items);
     }, (error) => console.error("Unable to load personal notifications:", error));
-  }, [currentUser, notificationStates, acceptedWaveIds]);
+  }, [currentUser, notificationStates, acceptedWaveIds, acceptedRsvpIds, registeredIds, experiences]);
 
   /*
    * TURN BACKEND EXPERIENCES
@@ -382,36 +433,7 @@ useEffect(() => {
     useMemo<
       BackendNotificationItem[]
     >(() => {
-      const now =
-        new Date();
-
-      const today =
-        new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        );
-
       const experienceItems = experiences
-        .filter(
-          (experience) => {
-            if (
-              !experience.eventDate
-            ) {
-              return true;
-            }
-
-            const eventDate =
-              new Date(
-                `${experience.eventDate}T00:00:00`
-              );
-
-            return (
-              eventDate >=
-              today
-            );
-          }
-        )
         .map(
           (experience) => {
             const notificationId =
@@ -475,6 +497,10 @@ useEffect(() => {
 
               experienceId:
                 experience.id,
+              actionStatus: experience.expiresAt !== null && experience.expiresAt < Date.now()
+                ? "expired" as const : registeredIds.includes(experience.id)
+                  ? "registered" as const : acceptedRsvpIds.includes(experience.id)
+                    ? "attending" as const : undefined,
 
               createdAt:
                 experience.createdAt,
@@ -500,6 +526,8 @@ useEffect(() => {
       experiences,
       directNotifications,
       notificationStates,
+      registeredIds,
+      acceptedRsvpIds,
     ]);
 
   const unreadCount =
@@ -685,18 +713,8 @@ useEffect(() => {
             data.category ??
             "",
 
-          date:
-            data.date ??
-            "",
-
-          eventDate:
-            data.eventDate ??
-            "",
-
-          time:
-            data.time ??
-            data.eventTime ??
-            "Time TBC",
+          ...eventDisplay(data),
+          eventType: typeof data.eventType === "string" ? data.eventType : undefined,
 
           location:
             typeof data.location ===

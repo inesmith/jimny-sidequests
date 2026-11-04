@@ -41,6 +41,7 @@ export type NotificationItem = {
   experienceId?: string;
   invitationId?: string;
   rsvpStatus?: "pending" | "accepted" | "declined";
+  actionStatus?: "registered" | "attending" | "expired";
 };
 
 type NotificationsScreenProps = {
@@ -219,8 +220,10 @@ function NotificationCard({
     notification.type
   );
 
-  const actionLabel =
-    getActionLabel(notification.type);
+  const actionLabel = notification.actionStatus === "expired" ? "Expired"
+    : notification.actionStatus === "registered" ? "Registered ✓"
+    : notification.actionStatus === "attending" ? "Attending ✓"
+    : getActionLabel(notification.type);
 
   return (
     <View style={styles.notificationCard}>
@@ -279,7 +282,7 @@ function NotificationCard({
             {notification.time}
           </Text>
 
-          {notification.type === "invite" && notification.invitationId && (
+          {notification.type === "invite" && notification.invitationId && !notification.actionStatus && (
             notification.rsvpStatus === "pending" || !notification.rsvpStatus ? (
               <View style={styles.rsvpRow}>
                 <Pressable style={[styles.actionButton, styles.actionButtonFilled]} onPress={() => onRSVP?.("accepted")}>
@@ -304,6 +307,7 @@ function NotificationCard({
                 styles.pressed,
             ]}
             onPress={onPress}
+            disabled={!!notification.actionStatus || (notification.type === "wave" && !!notification.waveAccepted)}
           >
             <Text
               style={[
