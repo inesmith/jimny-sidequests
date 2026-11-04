@@ -49,6 +49,7 @@ const passportTwoAspectRatio =
 
 type MyPassportScreenProps = {
   onBack?: () => void;
+  showBackButton?: boolean;
   onExplore?: () => void;
   onAdventures?: () => void;
   onProfile?: () => void;
@@ -102,6 +103,7 @@ const PASSPORT_STAMP_TOTAL = stampSlots.length;
 
 export default function MyPassportScreen({
   onBack,
+  showBackButton = false,
   onExplore,
   onAdventures,
   onProfile,
@@ -287,7 +289,7 @@ export default function MyPassportScreen({
         edges={["top", "bottom"]}
       >
         <View style={styles.screen}>
-          <Header onBack={onBack} onEditPassport={onEditPassport} />
+          <Header onBack={onBack} showBackButton={showBackButton} onEditPassport={onEditPassport} />
 
           <View style={styles.errorContainer}>
             <MaterialIcons
@@ -322,7 +324,7 @@ export default function MyPassportScreen({
       edges={["top", "bottom"]}
     >
       <View style={styles.screen}>
-        <Header onBack={onBack} onEditPassport={onEditPassport} />
+        <Header onBack={onBack} showBackButton={showBackButton} onEditPassport={onEditPassport} />
 
         <View
           style={styles.passportViewport}
@@ -605,28 +607,23 @@ export default function MyPassportScreen({
  */
 function Header({
   onBack,
+  showBackButton,
   onEditPassport,
 }: {
   onBack?: () => void;
+  showBackButton?: boolean;
   onEditPassport?: () => void;
 }) {
   return (
     <View style={styles.header}>
-      <Pressable
-        style={styles.headerSide}
-        onPress={onBack}
-        hitSlop={10}
-      >
-        <MaterialIcons
-          name="arrow-back"
-          size={22}
-          color={colors.text}
-        />
-
-        <Text style={styles.backText}>
-          Back
-        </Text>
-      </Pressable>
+      {showBackButton ? (
+        <Pressable style={styles.headerSide} onPress={onBack} hitSlop={10}>
+          <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+      ) : (
+        <View style={styles.headerSide} />
+      )}
 
       <Text style={styles.headerTitle}>
         My Passport

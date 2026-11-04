@@ -130,6 +130,8 @@ export default function App() {
   const [screen, setScreen] =
     useState<Screen>("landing");
 
+  const [passportOpenedFromProfile, setPassportOpenedFromProfile] = useState(false);
+
   const [questDetailsBackScreen, setQuestDetailsBackScreen] =
     useState<"home" | "myAdventures">("home");
 
@@ -478,7 +480,8 @@ export default function App() {
    * OPEN PASSPORT
    */
   const openPassport =
-    async () => {
+    async (fromProfile = false) => {
+      setPassportOpenedFromProfile(fromProfile);
       const user =
         auth.currentUser;
 
@@ -1366,7 +1369,7 @@ export default function App() {
           availableQuests={monthlyQuests}
           isLoadingMonthlyQuests={isLoadingMonthlyQuests}
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onAdventures={() => setScreen("adventures")}
           onProfile={
@@ -1412,7 +1415,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1453,7 +1456,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1481,7 +1484,7 @@ export default function App() {
             )
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1521,7 +1524,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1560,7 +1563,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1593,7 +1596,7 @@ export default function App() {
             )
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onStart={
             startOrContinueQuest
@@ -1634,7 +1637,7 @@ export default function App() {
             )
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onAdventures={
             openAdventures
@@ -1686,7 +1689,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1722,11 +1725,10 @@ export default function App() {
           onAdventures={
             openAdventures
           }
-          onPassport={() =>
-            setScreen(
-              "myPassport"
-            )
-          }
+          onPassport={() => {
+            setPassportOpenedFromProfile(false);
+            setScreen("myPassport");
+          }}
           onProfile={
             openProfile
           }
@@ -1770,7 +1772,7 @@ export default function App() {
             openAdventures
           }
           onPassport={
-            openPassport
+            () => openPassport(false)
           }
           onProfile={
             openProfile
@@ -1815,6 +1817,7 @@ export default function App() {
       return (
         <MyPassportScreen
           onEditPassport={() => setScreen("editPassport")}
+          showBackButton={passportOpenedFromProfile}
           onBack={() =>
             setScreen(
               "myProfile"
@@ -1894,14 +1897,11 @@ export default function App() {
 
           onMyExperiences={() => setScreen("myExperiences")}
 
-          onPassport={
-            openPassport
-          }
-          onCreatePassport={() =>
-            setScreen(
-              "createPassport"
-            )
-          }
+          onPassport={() => openPassport(true)}
+          onCreatePassport={() => {
+            setPassportOpenedFromProfile(true);
+            setScreen("createPassport");
+          }}
           onEditProfile={
             openEditProfile
           }
@@ -1985,11 +1985,14 @@ export default function App() {
         break;
 
       case "myAdventures":
-      case "myPassport":
       case "myExperiences":
       case "editProfile":
       case "createPassport":
         setScreen("myProfile");
+        break;
+
+      case "myPassport":
+        if (passportOpenedFromProfile) setScreen("myProfile");
         break;
 
       case "editPassport":
@@ -2008,27 +2011,20 @@ export default function App() {
     "upcomingExperiences",
     "experienceDetails",
     "myAdventures",
-    "myPassport",
     "myExperiences",
     "editProfile",
     "createPassport",
     "editPassport",
-  ].includes(screen);
+  ].includes(screen) || (screen === "myPassport" && passportOpenedFromProfile);
 
     const swipeBackGesture = Gesture.Pan()
     .enabled(swipeBackEnabled)
+    .hitSlop({ left: 0, width: 40 })
     .runOnJS(true)
-    .activeOffsetX(25)
-    .failOffsetY([-20, 20])
+    .activeOffsetX(20)
+    .failOffsetY([-25, 25])
     .onEnd((event) => {
-      const startedAtLeftEdge =
-        event.absoluteX - event.translationX <= 35;
-
-      if (
-        startedAtLeftEdge &&
-        event.translationX > 80 &&
-        Math.abs(event.translationY) < 70
-      ) {
+      if (event.translationX > 65 && Math.abs(event.translationY) < 80) {
         handleSwipeBack();
       }
     });
