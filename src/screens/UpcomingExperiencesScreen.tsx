@@ -80,52 +80,7 @@ type ExperienceLocation = {
 /*
  * PRESET EXPERIENCES
  */
-export const experiences: Experience[] = [
-  {
-    id: "franschhoek-coffee-cruise",
-    title: "Franschhoek Coffee Cruise",
-    category: "Coffee Meet-up",
-    date: "12 Oct 2026",
-    eventDate: "2026-10-12",
-    time: "09:00",
-    location: "Franschhoek, Western Cape",
-    description:
-      "Join fellow owners for a morning mountain pass cruise followed by artisanal coffee.",
-  },
-  {
-    id: "baviaanskloof-weekend",
-    title: "Baviaanskloof Weekend",
-    category: "Camping Weekend",
-    date: "25–27 Oct 2026",
-    eventDate: "2026-10-25",
-    time: "14:00",
-    location: "Eastern Cape",
-    description:
-      "A legendary 4×4 route through wilderness campsites, rivers, and technical tracks.",
-  },
-  {
-    id: "elgin-valley-convoy",
-    title: "Elgin Valley Convoy",
-    category: "Casual Convoy",
-    date: "8 Nov 2026",
-    eventDate: "2026-11-08",
-    time: "10:00",
-    location: "Elgin, Western Cape",
-    description:
-      "An easy-going vineyard-to-orchard group drive designed for GL and GLX models alike.",
-  },
-  {
-    id: "cederberg-off-road-day",
-    title: "Cederberg Off-Road Day",
-    category: "Off-Road Day",
-    date: "22 Nov 2026",
-    eventDate: "2026-11-22",
-    time: "08:00",
-    location: "Cederberg, Western Cape",
-    description:
-      "Test your crawl ratios on rocky trails with experienced marshals to guide you.",
-  },
-];
+export const experiences: Experience[] = [];
 
 export default function UpcomingExperiencesScreen({
   onBack,
@@ -1089,8 +1044,8 @@ export default function UpcomingExperiencesScreen({
     .filter((experience) => {
       if (!categoryMatches(experience.category ?? "", selectedFilter)) return false;
       if ((rangeStart || rangeEnd) && !experience.eventDate) return false;
-      if (rangeStart && experience.eventDate < toLocalDateKey(rangeStart)) return false;
-      if (rangeEnd && experience.eventDate > toLocalDateKey(rangeEnd)) return false;
+      if (rangeStart && experience.eventDate && experience.eventDate < toLocalDateKey(rangeStart)) return false;
+      if (rangeEnd && experience.eventDate && experience.eventDate > toLocalDateKey(rangeEnd)) return false;
       return true;
     })
     .sort((a, b) => {

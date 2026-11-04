@@ -12,6 +12,7 @@ import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import BottomNav from "../components/BottomNav";
+import { getStampImage } from "../data/stampImages";
 import {
   doc,
   getDoc,
@@ -293,31 +294,17 @@ export default function QuestCompletionScreen({
               Side Quest Complete!
             </Text>
 
-            {/* BADGE PLACEHOLDER */}
-            <View
-              style={
-                styles.badgePlaceholder
-              }
-            >
-              <View
-                style={
-                  styles.badgeCircle
-                }
-              >
-                <MaterialIcons
-                  name="workspace-premium"
-                  size={64}
-                  color="#A6ADBA"
+            {/* EARNED STAMP */}
+            <View style={styles.badgePlaceholder}>
+              {getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title) ? (
+                <Image
+                  source={(getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title))!}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
                 />
-
-                <Text
-                  style={
-                    styles.badgePlaceholderText
-                  }
-                >
-                  BADGE
-                </Text>
-              </View>
+              ) : (
+                <MaterialIcons name="workspace-premium" size={64} color={colors.orange} />
+              )}
             </View>
 
             <Text
@@ -451,9 +438,7 @@ const styles =
       justifyContent:
         "center",
 
-      borderWidth: 1.5,
-      borderStyle: "dashed",
-      borderColor: "#A6ADBA",
+      borderWidth: 0,
     },
 
     badgeCircle: {

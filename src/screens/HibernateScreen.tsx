@@ -641,8 +641,9 @@ export default function HibernateScreen({
 
   // Update the camera whenever the radius changes, including after the map mounts.
   useEffect(() => {
-    if (!userLocation || activeTab !== "popular") return;
-    const latitudeDelta = Math.min(150, Math.max(0.04, travelRadius * 2.4 / 111));
+    if (!userLocation) return;
+    const radiusKm = activeTab === "jimnys" ? 10 : travelRadius;
+    const latitudeDelta = Math.min(150, Math.max(0.04, radiusKm * 2.4 / 111));
     const longitudeDelta = Math.min(160, latitudeDelta / Math.max(0.25, Math.cos(degreesToRadians(userLocation.latitude))));
     const timer = setTimeout(() => {
       mapRef.current?.animateToRegion({
@@ -718,8 +719,9 @@ export default function HibernateScreen({
             userLocation.latitude,
           longitude:
             userLocation.longitude,
-          latitudeDelta: 0.09,
-          longitudeDelta: 0.09,
+          latitudeDelta: Math.max(0.04, (tab === "jimnys" ? 10 : travelRadius) * 2.4 / 111),
+          longitudeDelta: Math.max(0.04, (tab === "jimnys" ? 10 : travelRadius) * 2.4 / 111) /
+            Math.max(0.25, Math.cos(degreesToRadians(userLocation.latitude))),
         },
         350
       );
@@ -901,6 +903,33 @@ export default function HibernateScreen({
     }
   };
 
+  // Nearby presence is intentionally rounded for privacy. Spread markers sharing
+  // the same grid point for selection; these are NOT exact owner locations.
+  const nearbyMapMarkers = useMemo(() => {
+    const groups = new Map<string, NearbyOwner[]>();
+    for (const owner of nearbyJimnys) {
+      const key = `${owner.latitude.toFixed(6)},${owner.longitude.toFixed(6)}`;
+      const group = groups.get(key) ?? [];
+      group.push(owner);
+      groups.set(key, group);
+    }
+    return [...groups.values()].flatMap((group) => {
+      const ordered = [...group].sort((a, b) => a.id.localeCompare(b.id));
+      if (ordered.length === 1) {
+        return [{ owner: ordered[0], latitude: ordered[0].latitude, longitude: ordered[0].longitude }];
+      }
+      return ordered.map((owner, index) => {
+        const angle = (2 * Math.PI * index) / ordered.length;
+        const ring = Math.floor(index / 10);
+        const radiusKm = Math.min(0.75, 0.22 + ring * 0.13);
+        const latitude = owner.latitude + (Math.cos(angle) * radiusKm) / 111.2;
+        const longitude = owner.longitude + (Math.sin(angle) * radiusKm) /
+          (111.2 * Math.max(0.25, Math.abs(Math.cos(degreesToRadians(owner.latitude)))));
+        return { owner, latitude, longitude };
+      });
+    });
+  }, [nearbyJimnys]);
+
   const renderMap = () => {
     if (isLoadingLocation) {
       return (
@@ -943,8 +972,9 @@ export default function HibernateScreen({
         style={styles.map}
         initialRegion={mapRegion}
         onMapReady={() => {
-          if (!userLocation || activeTab !== "popular") return;
-          const latitudeDelta = Math.min(150, Math.max(0.04, travelRadius * 2.4 / 111));
+          if (!userLocation) return;
+          const radiusKm = activeTab === "jimnys" ? 10 : travelRadius;
+          const latitudeDelta = Math.min(150, Math.max(0.04, radiusKm * 2.4 / 111));
           mapRef.current?.animateToRegion({
             latitude: userLocation.latitude,
             longitude: userLocation.longitude,
@@ -956,10 +986,10 @@ export default function HibernateScreen({
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
-        {activeTab === "popular" && userLocation && (
+        {userLocation && (
           <Circle
             center={userLocation}
-            radius={travelRadius * 1000}
+            radius={(activeTab === "jimnys" ? 10 : travelRadius) * 1000}
             strokeColor={colors.green}
             fillColor="rgba(44, 112, 73, 0.09)"
             strokeWidth={2}
@@ -986,15 +1016,12 @@ export default function HibernateScreen({
 
           {activeTab === "jimnys" &&
             nearbyEnabled &&
-            nearbyJimnys.map((owner) => (
+            nearbyMapMarkers.map(({owner, latitude, longitude}) => (
               <Marker
                 key={owner.id}
-                coordinate={{
-                  latitude: owner.latitude,
-                  longitude: owner.longitude,
-                }}
+                coordinate={{latitude, longitude}}
                 title={owner.name}
-                description={`${owner.jimnyName} • ${owner.distanceFromUser.toFixed(1)} km away`}
+                description={`${owner.jimnyName} • approximately ${owner.distanceFromUser.toFixed(1)} km away`}
                 pinColor={colors.green}
               />
             ))}

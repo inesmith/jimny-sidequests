@@ -9,6 +9,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import BottomNav from "../components/BottomNav";
+import { getStampImage } from "../data/stampImages";
 
 import { colors, fonts } from "../theme/theme";
 import type { Quest } from "./HomeScreen";
@@ -120,17 +121,7 @@ export default function QuestDetailsScreen({
           <Text style={styles.headerTitle}>
             Quest Details
           </Text>
-
-          <Pressable
-            style={styles.menuButton}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name="more-horiz"
-              size={26}
-              color={colors.text}
-            />
-          </Pressable>
+          <View style={styles.menuButton} />
         </View>
 
         <ScrollView
@@ -185,14 +176,6 @@ export default function QuestDetailsScreen({
                 {quest.difficulty}/5)
               </Text>
 
-              <Text style={styles.detailText}>
-                <Text style={styles.detailLabel}>
-                  DURATION:{" "}
-                </Text>
-
-                {quest.duration}
-              </Text>
-
               <Text
                 style={[
                   styles.detailText,
@@ -229,10 +212,15 @@ export default function QuestDetailsScreen({
             </View>
 
             <View style={styles.stampCard}>
-              <ImagePlaceholder
-                label="STAMP"
-                style={styles.stampPlaceholder}
-              />
+              {getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title) ? (
+                <Image
+                  source={(getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title))!}
+                  style={styles.stampPlaceholder}
+                  resizeMode="contain"
+                />
+              ) : (
+                <ImagePlaceholder label="STAMP" style={styles.stampPlaceholder} />
+              )}
 
               <View style={styles.stampTextContainer}>
                 <Text style={styles.stampHeading}>

@@ -17,6 +17,7 @@ export type NearbyOwner = {
   friendshipStatus: "none" | "sent" | "incoming" | "friends";
 };
 
+// Preserve approximate locations: do not publish exact live GPS positions.
 const GRID = 0.02;
 const roundCoordinate = (value: number) => Math.round(value / GRID) * GRID;
 const distanceKm = (a: number, b: number, c: number, d: number) => {
@@ -38,13 +39,13 @@ export async function setNearbyVisibility(
   if (enabled && !location) throw new Error("Location permission required.");
   const ref = doc(db, "nearbyPresence", uid);
   if (!enabled) {
-  await setDoc(ref, {
-    uid,
-    enabled: false,
-    updatedAt: serverTimestamp(),
-  });
-  return;
-}
+    await setDoc(ref, {
+      uid,
+      enabled: false,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return;
+  }
   await setDoc(ref, {
     uid, enabled: true,
     latitude: roundCoordinate(location!.latitude),
@@ -96,7 +97,8 @@ export async function getNearbyOwners(
       model: typeof vehicle.model === "string" ? vehicle.model : "",
       year: vehicle.year ? String(vehicle.year) : "",
       latitude: p.latitude, longitude: p.longitude,
-      distanceFromUser: Math.round(p.distance),
+      // Keep one decimal place; these distances remain approximate due to the grid.
+      distanceFromUser: Math.round(p.distance * 10) / 10,
       friendshipStatus: states.get(p.id) ?? "none",
     } satisfies NearbyOwner;
   }));
@@ -105,16 +107,11 @@ export async function getNearbyOwners(
 
 export async function sendWave(recipientId: string) {
   const senderId = auth.currentUser?.uid;
-
   if (!senderId || senderId === recipientId) {
     throw new Error("Invalid wave.");
   }
-
   const id = waveId(senderId, recipientId);
   const ref = doc(db, "waves", id);
-
-  // Create a new Wave without first reading
-  // a document that may not exist.
   await setDoc(ref, {
     senderId,
     recipientId,
@@ -122,12 +119,7 @@ export async function sendWave(recipientId: string) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-
-  // Notify the recipient.
-  const sender = await getDoc(
-    doc(db, "users", senderId)
-  );
-
+  const sender = await getDoc(doc(db, "users", senderId));
   await setDoc(
     doc(db, "users", recipientId, "notifications", `wave_${id}`),
     {

@@ -1229,14 +1229,6 @@ const [isChangingPassword, setIsChangingPassword] = useState(false);
               )}
             </Pressable>
           </View>
-          {/* FOOTER */}
-          <Image
-            source={require("../../assets/images/footer-pattern.png")}
-            style={
-              styles.footerPattern
-            }
-            resizeMode="stretch"
-          />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

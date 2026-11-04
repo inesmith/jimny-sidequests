@@ -93,7 +93,7 @@ import {
 } from "./src/firebase/firebase";
 
 import { colors } from "./src/theme/theme";
-import { quests } from "./src/data/quests";
+import { quests, allQuests } from "./src/data/quests";
 
 type Screen =
   | "login"
@@ -131,6 +131,8 @@ export default function App() {
     useState<Screen>("landing");
 
   const [passportOpenedFromProfile, setPassportOpenedFromProfile] = useState(false);
+  const [stampDetailsBackScreen, setStampDetailsBackScreen] = useState<"myPassport" | "myAdventures">("myPassport");
+  const [canEditNewStampMemory, setCanEditNewStampMemory] = useState(false);
 
   const [questDetailsBackScreen, setQuestDetailsBackScreen] =
     useState<"home" | "myAdventures">("home");
@@ -1272,6 +1274,8 @@ export default function App() {
       setSelectedPassportStamp(
         stamp
       );
+      setStampDetailsBackScreen("myPassport");
+      setCanEditNewStampMemory(true);
 
       setScreen(
         "stampDetails"
@@ -1279,7 +1283,54 @@ export default function App() {
     };
 
   /*
-   * STAMP UPDATED
+   * OPEN AN EARNED STAMP FROM PASSPORT OR COMPLETED ADVENTURES
+   */
+  const openEarnedStamp = async (
+    questId: string,
+    origin: "myPassport" | "myAdventures"
+  ) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      const [passportSnapshot, questSnapshot] = await Promise.all([
+        getDoc(doc(db, "passports", user.uid)),
+        getDoc(doc(db, "users", user.uid, "quests", questId)),
+      ]);
+      const passportStamps = passportSnapshot.exists() && Array.isArray(passportSnapshot.data().stamps)
+        ? passportSnapshot.data().stamps as SavedPassportStamp[]
+        : [];
+      const savedStamp = passportStamps.find((item) => item.questId === questId || item.id === questId);
+      if (!savedStamp) {
+        Alert.alert("Stamp not found", "This Side Quest has not been added to your passport yet.");
+        return;
+      }
+      const quest = allQuests.find((item) => item.id === questId);
+      const questData = questSnapshot.exists() ? questSnapshot.data() : null;
+      const completeStamp: SavedPassportStamp = {
+        ...savedStamp,
+        id: savedStamp.id || questId,
+        questId,
+        name: savedStamp.name || quest?.title || "Side Quest",
+        title: savedStamp.title || quest?.stampTitle || quest?.title || "Stamp",
+        earnedAt: savedStamp.earnedAt ?? (questData?.completedAt instanceof Timestamp ? questData.completedAt : Timestamp.now()),
+        adventureMemory: savedStamp.adventureMemory ?? "",
+        driveStartedAt: savedStamp.driveStartedAt ?? null,
+        driveStoppedAt: savedStamp.driveStoppedAt ?? null,
+        proofPhotoURL: savedStamp.proofPhotoURL ?? null,
+        selectedTrail: savedStamp.selectedTrail ?? null,
+      };
+      setSelectedPassportStamp(completeStamp);
+      setCanEditNewStampMemory(false);
+      setStampDetailsBackScreen(origin);
+      setScreen("stampDetails");
+    } catch (error) {
+      console.error("Unable to open earned stamp:", error);
+      Alert.alert("Unable to open stamp", "Please try again.");
+    }
+  };
+
+  /*
+    * STAMP UPDATED
    */
   const handleStampUpdated =
     (
@@ -1295,9 +1346,7 @@ export default function App() {
    */
   const backToPassportFromStamp =
     () => {
-      setScreen(
-        "myPassport"
-      );
+      setScreen(stampDetailsBackScreen);
     };
 
   /*
@@ -1506,6 +1555,7 @@ export default function App() {
           onQuestPress={
             openQuestDetails
           }
+          onCompletedQuestPress={(quest) => openEarnedStamp(quest.id, "myAdventures")}
         />
       );
     }
@@ -1720,6 +1770,7 @@ export default function App() {
     ) {
       return (
         <StampDetailsScreen
+          allowMemoryEditing={canEditNewStampMemory}
           stamp={
             selectedPassportStamp
           }
@@ -1826,6 +1877,7 @@ export default function App() {
       return (
         <MyPassportScreen
           onEditPassport={() => setScreen("editPassport")}
+          onStampPress={(questId) => openEarnedStamp(questId, "myPassport")}
           showBackButton={passportOpenedFromProfile}
           onBack={() =>
             setScreen(
@@ -1981,6 +2033,10 @@ export default function App() {
         setScreen(questDetailsBackScreen);
         break;
 
+      case "stampDetails":
+        setScreen(stampDetailsBackScreen);
+        break;
+
       case "questTracker":
         setScreen("questDetails");
         break;
@@ -2017,6 +2073,7 @@ export default function App() {
     "notifications",
     "questDetails",
     "questTracker",
+    "stampDetails",
     "upcomingExperiences",
     "experienceDetails",
     "myAdventures",

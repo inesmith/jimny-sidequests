@@ -10,6 +10,11 @@ import {
 } from "firebase/auth";
 
 import {
+  isRegistrationInProgress,
+  subscribeToRegistrationState,
+} from "../services/registrationState";
+
+import {
   collection,
   doc,
   getDoc,
@@ -93,6 +98,16 @@ export type BackendNotificationItem =
   };
 
 export default function useNotifications() {
+
+    const [registrationInProgress, setRegistrationState] =
+    useState(isRegistrationInProgress);
+
+  useEffect(() => {
+    return subscribeToRegistrationState(() => {
+      setRegistrationState(isRegistrationInProgress());
+    });
+  }, []);
+
   const [
     currentUser,
     setCurrentUser,
@@ -119,18 +134,40 @@ export default function useNotifications() {
 
   const [directNotifications, setDirectNotifications] = useState<BackendNotificationItem[]>([]);
 
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveUserId(null);
+    if (!currentUser || registrationInProgress) return;
+
+    return onSnapshot(
+      doc(db, "privateUserData", currentUser.uid),
+      (snapshot) => {
+        setActiveUserId(
+          snapshot.exists() && snapshot.data().accountStatus === "active"
+            ? currentUser.uid
+            : null
+        );
+      },
+      (error) => {
+        setActiveUserId(null);
+        console.error("Unable to verify notification account status:", error);
+      }
+    );
+  }, [currentUser, registrationInProgress]);
+
   const [registeredIds, setRegisteredIds] = useState<string[]>([]);
   const [acceptedRsvpIds, setAcceptedRsvpIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!currentUser) { setRegisteredIds([]); return; }
+    if (!currentUser || activeUserId !== currentUser.uid) { setRegisteredIds([]); return; }
     return onSnapshot(collection(db, "users", currentUser.uid, "experienceRegistrations"), snapshot => {
       setRegisteredIds(snapshot.docs.filter(item => item.data().status === "registered").map(item => item.id));
     }, error => console.error("Unable to track registrations:", error));
-  }, [currentUser]);
+  }, [currentUser, activeUserId]);
 
   useEffect(() => {
-    if (!currentUser) { setAcceptedRsvpIds([]); return; }
+    if (!currentUser || activeUserId !== currentUser.uid) { setAcceptedRsvpIds([]); return; }
     let unsubs: Array<() => void> = [];
     const stop = onSnapshot(query(collection(db, "experiences"), where("eventType", "==", "meetAndGreet")), snapshot => {
       unsubs.forEach(unsub => unsub());
@@ -144,12 +181,12 @@ export default function useNotifications() {
       }, error => console.error("Unable to track RSVP:", error)));
     }, error => console.error("Unable to track experiences for RSVP:", error));
     return () => { stop(); unsubs.forEach(unsub => unsub()); };
-  }, [currentUser]);
+  }, [currentUser, activeUserId]);
 
   const [acceptedWaveIds, setAcceptedWaveIds] = useState<string[]>([]);
 
 useEffect(() => {
-  if (!currentUser) {
+  if (!currentUser || activeUserId !== currentUser.uid) {
     setAcceptedWaveIds([]);
     return;
   }
@@ -172,7 +209,7 @@ useEffect(() => {
       console.error("Unable to track accepted waves:", error);
     }
   );
-}, [currentUser]);
+}, [currentUser, activeUserId]);
 
   const [
     isLoadingNotifications,
@@ -183,33 +220,22 @@ useEffect(() => {
    * LISTEN FOR AUTH CHANGES
    */
   useEffect(() => {
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        (user) => {
-          setCurrentUser(
-            user
-          );
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setActiveUserId(null);
 
-          if (!user) {
-            setExperiences(
-              []
-            );
-
-            setNotificationStates(
-              {}
-            );
-
-            setIsLoadingNotifications(
-              false
-            );
-          } else {
-            setIsLoadingNotifications(
-              true
-            );
-          }
-        }
-      );
+      if (!user) {
+        setExperiences([]);
+        setNotificationStates({});
+        setDirectNotifications([]);
+        setRegisteredIds([]);
+        setAcceptedRsvpIds([]);
+        setAcceptedWaveIds([]);
+        setIsLoadingNotifications(false);
+      } else {
+        setIsLoadingNotifications(true);
+      }
+    });
 
     return unsubscribe;
   }, []);
@@ -218,7 +244,7 @@ useEffect(() => {
    * LISTEN TO REAL EXPERIENCES
    */
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || activeUserId !== currentUser.uid) {
       setExperiences(
         []
       );
@@ -315,14 +341,14 @@ useEffect(() => {
       );
 
     return unsubscribe;
-  }, [currentUser]);
+  }, [currentUser, activeUserId]);
 
   /*
    * LISTEN TO THIS USER'S
    * READ / UNREAD STATE
    */
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || activeUserId !== currentUser.uid) {
       setNotificationStates(
         {}
       );
@@ -384,11 +410,11 @@ useEffect(() => {
       );
 
     return unsubscribe;
-  }, [currentUser]);
+  }, [currentUser, activeUserId]);
 
   /* PERSONAL INVITATIONS AND RSVP UPDATES */
   useEffect(() => {
-    if (!currentUser) { setDirectNotifications([]); return; }
+    if (!currentUser || activeUserId !== currentUser.uid) { setDirectNotifications([]); return; }
     return onSnapshot(collection(db, "users", currentUser.uid, "notifications"), (snapshot) => {
       const items: BackendNotificationItem[] = snapshot.docs.map((item) => {
         const data = item.data();
@@ -423,7 +449,7 @@ useEffect(() => {
       });
       setDirectNotifications(items);
     }, (error) => console.error("Unable to load personal notifications:", error));
-  }, [currentUser, notificationStates, acceptedWaveIds, acceptedRsvpIds, registeredIds, experiences]);
+  }, [currentUser, activeUserId, notificationStates, acceptedWaveIds, acceptedRsvpIds, registeredIds, experiences]);
 
   /*
    * TURN BACKEND EXPERIENCES

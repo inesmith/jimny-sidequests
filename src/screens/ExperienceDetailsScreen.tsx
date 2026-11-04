@@ -617,27 +617,24 @@ export default function ExperienceDetailsScreen({
             bounces={false}
           >
             {/* EXPERIENCE IMAGE */}
-            <View
-              style={
-                styles.heroPlaceholder
-              }
-            >
-              <MaterialIcons
-                name="image"
-                size={42}
-                color={
-                  colors.textSecondary
-                }
+            {experience.imageURL ? (
+              <Image
+                source={{ uri: experience.imageURL }}
+                style={styles.heroPlaceholder}
+                resizeMode="cover"
               />
-
-              <Text
-                style={
-                  styles.heroPlaceholderText
-                }
-              >
-                EXPERIENCE IMAGE
-              </Text>
-            </View>
+            ) : (
+              <View style={styles.heroPlaceholder}>
+                <MaterialIcons
+                  name="image"
+                  size={42}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.heroPlaceholderText}>
+                  EXPERIENCE IMAGE
+                </Text>
+              </View>
+            )}
 
             <View style={styles.content}>
               {/* CATEGORY */}

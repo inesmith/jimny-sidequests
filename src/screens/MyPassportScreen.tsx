@@ -55,6 +55,7 @@ type MyPassportScreenProps = {
   onAdventures?: () => void;
   onProfile?: () => void;
   onEditPassport?: () => void;
+  onStampPress?: (questId: string) => void;
 };
 
 type PassportVehicle = {
@@ -111,6 +112,7 @@ export default function MyPassportScreen({
   onAdventures,
   onProfile,
   onEditPassport,
+  onStampPress,
 }: MyPassportScreenProps) {
   const [passport, setPassport] =
     useState<PassportData | null>(null);
@@ -570,6 +572,7 @@ export default function MyPassportScreen({
                         key={slot.id}
                         slot={slot}
                         stamp={getEarnedStamp(slot.id)}
+                         onPress={() => onStampPress?.(slot.id)}
                       />
                     ))}
                   </View>
@@ -698,9 +701,11 @@ function PassportDetail({
 function StampPosition({
   slot,
   stamp,
+  onPress,
 }: {
   slot: StampSlot;
   stamp?: PassportStamp;
+  onPress?: () => void;
 }) {
   const earned =
     Boolean(stamp);
@@ -713,9 +718,9 @@ function StampPosition({
       : "";
 
   return (
-    <View style={styles.stampPosition}>
+    <Pressable style={styles.stampPosition} onPress={earned ? onPress : undefined} disabled={!earned} accessibilityRole="button" accessibilityLabel={`View ${slot.name} stamp details`}>
       {earned ? (
-        <View style={[styles.earnedStamp, slot.image && styles.earnedStampWithArtwork]}>
+        <View style={[styles.earnedStamp, slot.image ? styles.earnedStampWithArtwork : undefined]}>
           {slot.image ? (
             <Image source={slot.image} style={styles.stampArtwork} resizeMode="contain" />
           ) : (
@@ -750,7 +755,7 @@ function StampPosition({
           style={styles.stampDateSpace}
         />
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -1236,8 +1241,8 @@ const styles =
     },
 
     stampArtwork: {
-      width: "100%",
-      height: "100%",
+      width: "116%",
+      height: "116%",
     },
 
     stampName: {

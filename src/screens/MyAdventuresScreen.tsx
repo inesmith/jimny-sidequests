@@ -39,6 +39,7 @@ type MyAdventuresScreenProps = {
   onHibernate?: () => void;
   onUpcomingExperiences: () => void;
   onQuestPress?: (quest: Quest) => void;
+  onCompletedQuestPress?: (quest: Quest) => void;
 };
 
 type QuestRecord = {
@@ -71,6 +72,7 @@ export default function MyAdventuresScreen({
   onHibernate,
   onUpcomingExperiences,
   onQuestPress,
+  onCompletedQuestPress,
 }: MyAdventuresScreenProps) {
   const [
     completedQuests,
@@ -420,16 +422,7 @@ export default function MyAdventuresScreen({
             My Adventures
           </Text>
 
-          <Pressable
-            style={styles.headerMenu}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name="more-horiz"
-              size={26}
-              color={colors.text}
-            />
-          </Pressable>
+          <View style={styles.headerMenu} />
         </View>
 
         {/* CONTENT */}
@@ -555,7 +548,7 @@ export default function MyAdventuresScreen({
                           completedAt
                         }
                         onPress={() =>
-                          onQuestPress?.(
+                          (onCompletedQuestPress ?? onQuestPress)?.(
                             quest
                           )
                         }
@@ -793,8 +786,9 @@ function CompletedQuestCard({
       <View
         style={[
           styles.completedStamp,
-          (getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title)) && styles.completedStampWithArtwork,
-        ]}
+            Boolean(getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title))
+              ? styles.completedStampWithArtwork
+              : undefined,        ]}
       >
         {getStampImage(quest.stampTitle || quest.title) ?? getStampImage(quest.title) ? (
           <Image
