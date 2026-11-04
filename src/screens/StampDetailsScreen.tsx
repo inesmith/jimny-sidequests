@@ -14,6 +14,8 @@ import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import BottomNav from "../components/BottomNav";
+import { getStampImage } from "../data/stampImages";
+import { allQuests } from "../data/quests";
 import {
   doc,
   getDoc,
@@ -35,6 +37,7 @@ import {
 
 type StampDetailsScreenProps = {
   stamp: SavedPassportStamp;
+  allowMemoryEditing?: boolean;
 
   /*
    * IMPORTANT:
@@ -169,6 +172,7 @@ function formatDriveDuration(
 
 export default function StampDetailsScreen({
   stamp,
+  allowMemoryEditing = false,
   onBack,
   onExplore,
   onAdventures,
@@ -194,13 +198,17 @@ export default function StampDetailsScreen({
     isEditingMemory,
     setIsEditingMemory,
   ] = useState(
-    !stamp.adventureMemory
+    allowMemoryEditing && !stamp.adventureMemory
   );
 
   const [
     isSavingMemory,
     setIsSavingMemory,
   ] = useState(false);
+
+  const quest = allQuests.find((item) => item.id === stamp.questId);
+  const stampArtwork = getStampImage(stamp.title || stamp.name) ?? getStampImage(stamp.name) ?? (quest ? getStampImage(quest.stampTitle || quest.title) : undefined);
+  const locationLabel = stamp.selectedTrail?.trim() || (quest as any)?.location || (quest as any)?.locationName || (quest as any)?.area || "Not recorded";
 
   const completedDate =
     formatCompletedDate(
@@ -404,22 +412,7 @@ export default function StampDetailsScreen({
           >
             Stamp Details
           </Text>
-
-          <Pressable
-            style={[
-              styles.headerSide,
-              styles.headerRight,
-            ]}
-            hitSlop={10}
-          >
-            <MaterialIcons
-              name="more-horiz"
-              size={26}
-              color={
-                colors.text
-              }
-            />
-          </Pressable>
+          <View style={[styles.headerSide, styles.headerRight]} />
         </View>
 
         <ScrollView
@@ -435,292 +428,103 @@ export default function StampDetailsScreen({
           <View
             style={styles.content}
           >
-            {/* ================================= */}
-            {/* STAMP */}
-            {/* ================================= */}
+            <View style={styles.heroCard}>
+              <Text style={styles.heroEyebrow}>ADVENTURE PASSPORT · STAMP COLLECTED</Text>
+              <View style={styles.stampPlaceholder}>
+                {stampArtwork ? (
+                  <Image source={stampArtwork} style={styles.stampArtwork} resizeMode="contain" />
+                ) : (
+                  <Text style={styles.heroEyebrow}>STAMP COLLECTED</Text>
+                )}
+              </View>
+              <Text style={styles.questTitle}>{stamp.title || stamp.name}</Text>
+              <Text style={styles.completedText}>A little adventure worth remembering.</Text>
+            </View>
 
-            <View
-              style={
-                styles.stampPlaceholder
-              }
-            >
-              <View
-                style={
-                  styles.stampPlaceholderInner
-                }
-              >
-                <MaterialIcons
-                  name="workspace-premium"
-                  size={58}
-                  color="#A6ADBA"
-                />
+            <View style={styles.infoRow}>
+              <View style={styles.infoCard}>
 
-                <Text
-                  style={
-                    styles.stampPlaceholderText
-                  }
-                >
-                  STAMP
-                </Text>
+                <Text style={styles.infoLabel}>COMPLETED</Text>
+                <Text style={styles.infoValue}>{completedDate}</Text>
+              </View>
+              <View style={styles.infoCard}>
+
+                <Text style={styles.infoLabel}>LOCATION</Text>
+                <Text style={styles.infoValue}>{locationLabel}</Text>
               </View>
             </View>
 
-            <Text
-              style={
-                styles.questTitle
-              }
-            >
-              {stamp.name}
-            </Text>
+            {quest?.description ? (
+              <View style={styles.storyCard}>
+                <View style={styles.sectionTitleRow}>
 
-            <Text
-              style={
-                styles.completedText
-              }
-            >
-              Completed{" "}
-              {completedDate}
-            </Text>
-
-            {/* Show drive details only when an actual timed drive was recorded. */}
-            {stamp.driveStartedAt && stamp.driveStoppedAt ? (
-              <>
-            {/* ================================= */}
-            {/* QUEST TRACKER SNAPSHOT */}
-            {/* ================================= */}
-
-            <Text
-              style={
-                styles.sectionHeading
-              }
-            >
-              QUEST TRACKER
-              SNAPSHOT
-            </Text>
-
-            <View
-              style={
-                styles.snapshotCard
-              }
-            >
-              <View
-                style={
-                  styles.snapshotItem
-                }
-              >
-                <Text
-                  style={
-                    styles.snapshotLabel
-                  }
-                >
-                  Start time
-                </Text>
-
-                <Text
-                  style={
-                    styles.snapshotValue
-                  }
-                >
-                  {startTime}
-                </Text>
+                  <Text style={styles.sectionTitle}>THE SIDE QUEST</Text>
+                </View>
+                <Text style={styles.storyTitle}>{quest.title}</Text>
+                <Text style={styles.storyText}>{quest.description}</Text>
               </View>
-
-              <View
-                style={
-                  styles.snapshotDivider
-                }
-              />
-
-              <View
-                style={
-                  styles.snapshotItem
-                }
-              >
-                <Text
-                  style={
-                    styles.snapshotLabel
-                  }
-                >
-                  Timelaps
-                </Text>
-
-                <Text
-                  style={
-                    styles.snapshotValue
-                  }
-                >
-                  {driveDuration}
-                </Text>
-              </View>
-            </View>
-
-              </>
             ) : null}
 
-            {/* ================================= */}
-            {/* ADVENTURE MEMORY */}
-            {/* ================================= */}
+            <View style={styles.storyCard}>
+              <View style={styles.sectionTitleRow}>
 
-            <Text
-              style={
-                styles.sectionHeading
-              }
-            >
-              MY ADVENTURE MEMORY
-            </Text>
-
-            <View
-              style={
-                styles.memoryCard
-              }
-            >
-              {isEditingMemory ? (
+                <Text style={styles.sectionTitle}>MY ADVENTURE MEMORY</Text>
+              </View>
+              {allowMemoryEditing && isEditingMemory ? (
                 <>
                   <TextInput
-                    style={
-                      styles.memoryInput
-                    }
-                    value={
-                      adventureMemory
-                    }
-                    onChangeText={
-                      setAdventureMemory
-                    }
-                    placeholder="Write a memory from this adventure..."
+                    style={styles.memoryInput}
+                    value={adventureMemory}
+                    onChangeText={setAdventureMemory}
+                    placeholder="What made this adventure special?"
                     placeholderTextColor="#9CA3AF"
                     multiline
                     textAlignVertical="top"
                     maxLength={500}
                   />
-
-                  <View
-                    style={
-                      styles.memoryActions
-                    }
-                  >
+                  <View style={styles.memoryActions}>
                     {savedAdventureMemory ? (
-                      <Pressable
-                        onPress={() => {
-                          setAdventureMemory(
-                            savedAdventureMemory
-                          );
-
-                          setIsEditingMemory(
-                            false
-                          );
-                        }}
-                        hitSlop={8}
-                      >
-                        <Text
-                          style={
-                            styles.cancelMemoryText
-                          }
-                        >
-                          Cancel
-                        </Text>
+                      <Pressable onPress={() => { setAdventureMemory(savedAdventureMemory); setIsEditingMemory(false); }} hitSlop={8}>
+                        <Text style={styles.cancelMemoryText}>Cancel</Text>
                       </Pressable>
-                    ) : (
-                      <View />
-                    )}
-
+                    ) : <View />}
                     <Pressable
-                      style={[
-                        styles.saveMemoryButton,
-                        isSavingMemory &&
-                          styles.saveMemoryButtonDisabled,
-                      ]}
-                      onPress={
-                        saveAdventureMemory
-                      }
-                      disabled={
-                        isSavingMemory
-                      }
+                      style={[styles.saveMemoryButton, isSavingMemory && styles.saveMemoryButtonDisabled]}
+                      onPress={saveAdventureMemory}
+                      disabled={isSavingMemory}
                     >
-                      <Text
-                        style={
-                          styles.saveMemoryButtonText
-                        }
-                      >
-                        {isSavingMemory
-                          ? "SAVING..."
-                          : "SAVE MEMORY"}
-                      </Text>
+                      <Text style={styles.saveMemoryButtonText}>{isSavingMemory ? "SAVING..." : "SAVE MEMORY"}</Text>
                     </Pressable>
                   </View>
                 </>
               ) : (
-                <Pressable
-                  onPress={() =>
-                    setIsEditingMemory(
-                      true
-                    )
-                  }
-                >
-                  <Text
-                    style={
-                      styles.memoryText
-                    }
-                  >
-                    {
-                      savedAdventureMemory
-                    }
+                <>
+                  <Text style={savedAdventureMemory ? styles.memoryText : styles.emptyMemoryText}>
+                    {savedAdventureMemory || "No memory was added for this adventure."}
                   </Text>
-
-                  <Text
-                    style={
-                      styles.editMemoryText
-                    }
-                  >
-                    Edit memory
-                  </Text>
-                </Pressable>
+                  {allowMemoryEditing ? (
+                    <Pressable onPress={() => setIsEditingMemory(true)} hitSlop={8}>
+                      <Text style={styles.editMemoryText}>{savedAdventureMemory ? "Edit memory" : "Add your memory"}</Text>
+                    </Pressable>
+                  ) : null}
+                </>
               )}
             </View>
 
-            {/* ================================= */}
-            {/* PHOTO PROOF */}
-            {/* ================================= */}
+            <View style={styles.photoSection}>
+              <View style={styles.sectionTitleRow}>
 
-            <Text
-              style={
-                styles.sectionHeading
-              }
-            >
-              ATTACHED PHOTO PROOF
-            </Text>
-
-            {stamp.proofPhotoURL ? (
-              <Image
-                source={{
-                  uri: stamp.proofPhotoURL,
-                }}
-                style={
-                  styles.proofPhoto
-                }
-                resizeMode="cover"
-              />
-            ) : (
-              <View
-                style={
-                  styles.photoPlaceholder
-                }
-              >
-                <MaterialIcons
-                  name="image"
-                  size={38}
-                  color="#A6ADBA"
-                />
-
-                <Text
-                  style={
-                    styles.photoPlaceholderText
-                  }
-                >
-                  No proof photo
-                  attached
-                </Text>
+                <Text style={styles.sectionTitle}>ADVENTURE PHOTO</Text>
               </View>
-            )}
+              {stamp.proofPhotoURL ? (
+                <Image source={{ uri: stamp.proofPhotoURL }} style={styles.proofPhoto} resizeMode="cover" />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+
+                  <Text style={styles.photoPlaceholderText}>No photo was added</Text>
+                </View>
+              )}
+            </View>
           </View>
         </ScrollView>
 
@@ -825,6 +629,20 @@ const styles =
      * STAMP
      */
 
+    heroCard: { alignItems: "center", paddingVertical: 20, paddingHorizontal: 12, backgroundColor: colors.background, borderWidth: 2, borderColor: colors.green, borderRadius: 14 },
+    heroEyebrow: { fontFamily: fonts.extraBold, fontSize: 10, letterSpacing: 1.1, color: colors.green, textAlign: "center" },
+    stampArtwork: { width: "100%", height: "100%" },
+    infoRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+    infoCard: { flex: 1, minHeight: 112, padding: 14, borderRadius: 12, backgroundColor: colors.background, borderWidth: 2, borderColor: colors.green, alignItems: "flex-start", gap: 5 },
+    infoLabel: { fontFamily: fonts.extraBold, fontSize: 10, letterSpacing: 0.6, color: colors.red },
+    infoValue: { fontFamily: fonts.semiBold, fontSize: 13, lineHeight: 18, color: colors.text },
+    storyCard: { marginTop: 16, padding: 19, backgroundColor: colors.background, borderWidth: 2, borderColor: colors.green, borderRadius: 12 },
+    sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 13 },
+    sectionTitle: { fontFamily: fonts.extraBold, fontSize: 12, letterSpacing: 0.6, color: colors.red },
+    storyTitle: { fontFamily: fonts.extraBold, fontSize: 17, lineHeight: 23, color: colors.text, marginBottom: 7 },
+    storyText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 23, color: colors.text },
+    emptyMemoryText: { fontFamily: fonts.regularItalic, fontSize: 14, lineHeight: 22, color: colors.textSecondary },
+    photoSection: { marginTop: 16, padding: 19, borderRadius: 12, backgroundColor: colors.background, borderWidth: 2, borderColor: colors.green, marginBottom: 18 },
     stampPlaceholder: {
       width: "47%",
       maxWidth: 205,
@@ -836,9 +654,7 @@ const styles =
       justifyContent:
         "center",
 
-      borderWidth: 1.5,
-      borderStyle: "dashed",
-      borderColor: "#A6ADBA",
+      borderWidth: 0,
     },
 
     stampPlaceholderInner: {
@@ -851,7 +667,7 @@ const styles =
 
       borderWidth: 2,
       borderStyle: "dashed",
-      borderColor: "#C7CAD0",
+      borderColor: colors.green,
 
       borderRadius: 999,
     },
@@ -927,7 +743,7 @@ const styles =
 
       borderWidth: 1.5,
       borderColor:
-        colors.green,
+        colors.divider,
 
       borderRadius: 4,
 
