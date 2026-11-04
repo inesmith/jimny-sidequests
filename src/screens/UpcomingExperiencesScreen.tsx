@@ -138,6 +138,41 @@ export default function UpcomingExperiencesScreen({
   /*
    * COMMUNITY EXPERIENCES
    */
+  const [selectedFilter, setSelectedFilter] = useState("All");
+  const [rangeStart, setRangeStart] = useState<Date | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
+  const [activeRangePicker, setActiveRangePicker] = useState<"start" | "end" | null>(null);
+
+  const experienceFilters = ["All", "Off-Road", "Camping", "Community", "Road Trip", "Quick Quest"];
+
+  const categoryMatches = (category: string, filter: string) => {
+    if (filter === "All") return true;
+    const value = category.toLowerCase();
+    switch (filter) {
+      case "Off-Road": return /off.road|4x4|trail/.test(value);
+      case "Camping": return /camp|weekend|overnight/.test(value);
+      case "Community": return /coffee|meet|greet|community|social/.test(value);
+      case "Road Trip": return /convoy|cruise|road.trip|tour/.test(value);
+      case "Quick Quest": return /quick|day.trip|short/.test(value);
+      default: return false;
+    }
+  };
+
+  const handleRangeChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (event.type === "dismissed" || !date || !activeRangePicker) {
+      if (Platform.OS === "android") setActiveRangePicker(null);
+      return;
+    }
+    if (activeRangePicker === "start") {
+      setRangeStart(date);
+      if (rangeEnd && toLocalDateKey(date) > toLocalDateKey(rangeEnd)) setRangeEnd(null);
+      setActiveRangePicker("end");
+    } else {
+      setRangeEnd(date);
+      setActiveRangePicker(null);
+    }
+  };
+
   const [
     communityExperiences,
     setCommunityExperiences,
@@ -1051,6 +1086,13 @@ export default function UpcomingExperiencesScreen({
         );
       }
     )
+    .filter((experience) => {
+      if (!categoryMatches(experience.category ?? "", selectedFilter)) return false;
+      if ((rangeStart || rangeEnd) && !experience.eventDate) return false;
+      if (rangeStart && experience.eventDate < toLocalDateKey(rangeStart)) return false;
+      if (rangeEnd && experience.eventDate > toLocalDateKey(rangeEnd)) return false;
+      return true;
+    })
     .sort((a, b) => {
       if (
         !a.eventDate &&
@@ -1147,21 +1189,7 @@ export default function UpcomingExperiencesScreen({
             >
               Experiences
             </Text>
-
-            <Pressable
-              style={
-                styles.headerMenu
-              }
-              hitSlop={10}
-            >
-              <MaterialIcons
-                name="more-horiz"
-                size={26}
-                color={
-                  colors.text
-                }
-              />
-            </Pressable>
+            <View style={styles.headerMenu} />
           </View>
 
           {/* CONTENT */}
@@ -1207,6 +1235,90 @@ export default function UpcomingExperiencesScreen({
                 </Text>
               </View>
 
+              {/* CATEGORY FILTERS — matching HomeScreen */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterContainer}
+                style={styles.filterScroll}
+              >
+                {experienceFilters.map((category) => {
+                  const selected = selectedFilter === category;
+                  return (
+                    <Pressable
+                      key={category}
+                      style={({ pressed }) => [
+                        styles.filterButton,
+                        selected && styles.filterButtonSelected,
+                        pressed && styles.pressed,
+                      ]}
+                      onPress={() => setSelectedFilter(category)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterText,
+                          selected && styles.filterTextSelected,
+                        ]}
+                      >
+                        {category}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              {/* DATE RANGE — compact single-field layout */}
+              <View style={styles.rangeSection}>
+                <Text style={styles.rangeHeading}>SELECT DATES</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.rangeCombinedField,
+                    activeRangePicker && styles.rangeFieldActive,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => setActiveRangePicker("start")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select experience date range"
+                >
+                  <Text style={[styles.rangeCombinedValue, !rangeStart && styles.rangePlaceholder]}>
+                    {rangeStart
+                      ? `${formatDate(rangeStart)}  –  ${rangeEnd ? formatDate(rangeEnd) : "End date"}`
+                      : "Select a date range"}
+                  </Text>
+                  <MaterialIcons name="calendar-today" size={22} color={colors.textSecondary} />
+                </Pressable>
+                {activeRangePicker && (
+                  <View style={styles.rangeCalendar}>
+                    <Text style={styles.rangeCalendarLabel}>
+                      {activeRangePicker === "start" ? "SELECT START DATE" : "SELECT END DATE"}
+                    </Text>
+                    <DateTimePicker
+                      value={(activeRangePicker === "start" ? rangeStart : rangeEnd) ?? rangeStart ?? new Date()}
+                      mode="date"
+                      minimumDate={activeRangePicker === "end" ? (rangeStart ?? new Date()) : new Date()}
+                      display={Platform.OS === "ios" ? "inline" : "default"}
+                      onChange={handleRangeChange}
+                    />
+                    {Platform.OS === "ios" && (
+                      <Pressable style={styles.rangeDone} onPress={() => {
+                        if (activeRangePicker === "start" && rangeStart) setActiveRangePicker("end");
+                        else setActiveRangePicker(null);
+                      }}>
+                        <Text style={styles.rangeDoneText}>
+                          {activeRangePicker === "start" ? "NEXT: END DATE" : "DONE"}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+                {(rangeStart || rangeEnd) && (
+                  <Pressable onPress={() => { setRangeStart(null); setRangeEnd(null); setActiveRangePicker(null); }}
+                    style={styles.clearRange}>
+                    <Text style={styles.clearRangeText}>Clear dates</Text>
+                  </Pressable>
+                )}
+              </View>
+
               {/* EXPERIENCES */}
               <View
                 style={
@@ -1236,7 +1348,12 @@ export default function UpcomingExperiencesScreen({
                     </Text>
                   </View>
                 ) : (
-                  allExperiences.map(
+                  allExperiences.length === 0 ? (
+                    <View style={styles.noResults}>
+                      <Text style={styles.noResultsTitle}>No experiences found</Text>
+                      <Text style={styles.noResultsText}>Try another date range or category.</Text>
+                    </View>
+                  ) : allExperiences.map(
                     (
                       experience
                     ) => (
@@ -1359,7 +1476,7 @@ export default function UpcomingExperiencesScreen({
                            }}
                            disabled={isCreating}
                          >
-                           <MaterialIcons name="local-offer" size={18} color={colors.green} />
+                           <MaterialIcons name="local-offer" size={18} color={colors.textSecondary} />
                            <Text style={styles.experienceTypeOptionText}>{type}</Text>
                          </Pressable>
                        ))}
@@ -1392,9 +1509,7 @@ export default function UpcomingExperiencesScreen({
                     <MaterialIcons
                       name="calendar-month"
                       size={20}
-                      color={
-                        colors.orange
-                      }
+                      color={colors.textSecondary}
                     />
 
                     <Text
@@ -1414,9 +1529,7 @@ export default function UpcomingExperiencesScreen({
                     <MaterialIcons
                       name="keyboard-arrow-down"
                       size={23}
-                      color={
-                        colors.text
-                      }
+                      color={colors.textSecondary}
                     />
                   </Pressable>
 
@@ -1496,9 +1609,7 @@ export default function UpcomingExperiencesScreen({
                     <MaterialIcons
                       name="schedule"
                       size={20}
-                      color={
-                        colors.orange
-                      }
+                      color={colors.textSecondary}
                     />
 
                     <Text
@@ -1518,9 +1629,7 @@ export default function UpcomingExperiencesScreen({
                     <MaterialIcons
                       name="keyboard-arrow-down"
                       size={23}
-                      color={
-                        colors.text
-                      }
+                      color={colors.textSecondary}
                     />
                   </Pressable>
 
@@ -1692,9 +1801,7 @@ export default function UpcomingExperiencesScreen({
                               size={
                                 18
                               }
-                              color={
-                                colors.orange
-                              }
+                              color={colors.textSecondary}
                               style={
                                 styles.predictionIcon
                               }
@@ -1756,9 +1863,7 @@ export default function UpcomingExperiencesScreen({
                       <MaterialIcons
                         name="check-circle"
                         size={15}
-                        color={
-                          colors.green
-                        }
+                        color={colors.textSecondary}
                       />
 
                       <Text
@@ -1809,7 +1914,7 @@ export default function UpcomingExperiencesScreen({
                     </View>
                   ) : (
                     <Pressable style={styles.coverImagePicker} onPress={chooseExperienceImage} disabled={isCreating}>
-                      <MaterialIcons name="add-photo-alternate" size={24} color={colors.orange} />
+                      <MaterialIcons name="add-photo-alternate" size={24} color={colors.textSecondary} />
                       <Text style={styles.coverImagePickerText}>Choose a cover photo</Text>
                     </Pressable>
                   )}
@@ -1845,9 +1950,7 @@ export default function UpcomingExperiencesScreen({
                         <MaterialIcons
                           name="add"
                           size={20}
-                          color={
-                            colors.white
-                          }
+                          color={colors.textSecondary}
                         />
 
                         <Text
@@ -2207,6 +2310,136 @@ function toLocalDateKey(
 
 const styles =
   StyleSheet.create({
+    filterScroll: {
+      marginHorizontal: -20,
+      marginBottom: 13,
+      marginTop: -20,
+    },
+    filterContainer: {
+      paddingHorizontal: spacing.screen,
+      paddingTop: 12,
+      paddingBottom: 14,
+      gap: 9,
+    },
+    filterButton: {
+      minHeight: 38,
+      paddingHorizontal: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: colors.orange,
+      borderRadius: 22,
+      backgroundColor: colors.background,
+    },
+    filterButtonSelected: {
+      borderColor: colors.orange,
+      backgroundColor: colors.orange,
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.18,
+      shadowRadius: 3,
+      elevation: 3,
+    },
+    filterText: {
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.text,
+    },
+    filterTextSelected: {
+      fontFamily: fonts.extraBold,
+      color: colors.white,
+    },
+    rangeSection: {
+      width: "100%",
+      marginBottom: 22,
+    },
+    rangeHeading: {
+      fontFamily: fonts.extraBold,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.red,
+      marginBottom: 11,
+    },
+    rangeCombinedField: {
+      minHeight: 52,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingHorizontal: 14,
+      borderWidth: 1.3,
+      borderColor: colors.orange,
+      borderRadius: 5,
+      backgroundColor: colors.background,
+    },
+    rangeFieldActive: {
+      borderColor: colors.orange,
+    },
+    rangeCombinedValue: {
+      flex: 1,
+      fontFamily: fonts.semiBold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    rangePlaceholder: {
+      color: colors.textSecondary,
+    },
+    rangeCalendarLabel: {
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      fontFamily: fonts.extraBold,
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    rangeCalendar: {
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 4,
+      backgroundColor: colors.background,
+      overflow: "hidden",
+    },
+    rangeDone: {
+      alignSelf: "flex-end",
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+    },
+    rangeDoneText: {
+      fontFamily: fonts.extraBold,
+      fontSize: 12,
+      color: colors.green,
+    },
+    clearRange: {
+      alignSelf: "flex-end",
+      marginTop: 8,
+      paddingVertical: 4,
+    },
+    clearRangeText: {
+      fontFamily: fonts.semiBold,
+      fontSize: 12,
+      color: colors.red,
+      textDecorationLine: "underline",
+    },
+    noResults: {
+      borderWidth: 1,
+      borderColor: colors.divider,
+      borderRadius: 4,
+      padding: 24,
+      alignItems: "center",
+    },
+    noResultsTitle: {
+      fontFamily: fonts.extraBold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    noResultsText: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginTop: 6,
+      textAlign: "center",
+    },
+
     safeArea: {
       flex: 1,
       backgroundColor:
@@ -2291,17 +2524,18 @@ const styles =
     pageTitle: {
       fontFamily:
         fonts.extraBold,
-      fontSize: 27,
-      lineHeight: 33,
+      fontSize: 20,
+      lineHeight: 26,
       color: colors.text,
     },
 
     pageSubtitle: {
-      marginTop: 2,
+      marginTop: 8,
+      maxWidth: 410,
       fontFamily:
         fonts.regular,
-      fontSize: 17,
-      lineHeight: 23,
+      fontSize: 12,
+      lineHeight: 19,
       color:
         colors.textSecondary,
     },
